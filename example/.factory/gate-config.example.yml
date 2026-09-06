@@ -1,0 +1,133 @@
+# Beispielkonfiguration mit Platzhaltern.
+#
+# Diese Datei gehört in das Produktrepositorium unter `.factory/gate-config.yml`.
+# Sie liegt hier als Muster, nicht als Vorgabe: jeder Wert unten ist ein
+# Platzhalter und für kein Repositorium richtig.
+#
+# Der Aufbau ist in schemas/gate-config.schema.json festgelegt. Was hier fehlt,
+# wird nicht aufgerufen.
+#
+# NICHT in diese Datei gehören: Geheimnisse, Token, Verbindungszeichenfolgen und
+# die Kontokennungen der Menschen mit Freigaberecht. Die Kennungen stehen als
+# Repository-Variable in den Einstellungen, damit kein Name in einer
+# versionierten Datei hängt.
+
+profile: PLATZHALTER-PROFILNAME
+
+# Commit-SHA des Kerns, den dieses Repositorium einbindet. Verbindlich ist der
+# SHA in den `uses:`-Zeilen; hier steht er zur Nachvollziehbarkeit.
+core_ref: "0000000000000000000000000000000000000000"
+
+# Commit-SHA der Action, die den Agentenlauf ausführt. Ein Tag wäre verschiebbar.
+agent_action_sha: "0000000000000000000000000000000000000000"
+
+# Ohne diese Liste läuft eine Kette, in der ein Lauf den nächsten anstösst, gar
+# nicht. Mit einer zu weiten Liste läuft sie im Kreis.
+allowed_bots:
+  - "platzhalter-intake[bot]"
+  - "platzhalter-spec[bot]"
+  - "platzhalter-dev[bot]"
+  - "platzhalter-review[bot]"
+
+max_attempts: 3
+
+# Statuslabel auf Rollenname. Rechts steht ausschliesslich ein Rollenname des
+# Kerns, nie ein Dateipfad: sonst liesse sich die Kette über diese Datei auf
+# einen fremden Workflow umlenken.
+roles:
+  "status:spec": solution-architect
+  "status:spec-review": adversary
+  "status:test-design": test-designer
+  "status:ready-for-dev": implementer
+  "status:code-review": adversary
+
+gates:
+  story-lint:
+    required_label_prefixes:
+      - "profile:"
+      - "module:"
+    nutzen_marker_required: true
+
+  adr-check:
+    required_sections:
+      - Kontext
+      - Entscheidung
+      - Alternativen
+      - Betriebsfolgen
+      - Status
+    min_alternatives: 2
+
+  spec-review:
+    max_turns: 12
+    prompt_extension_path: .factory/prompts/adversary-spec.md
+
+  test-coverage:
+    ac_map_file: tests/ac-map.yml
+    run_adversarial: true
+    max_turns: 8
+    prompt_extension_path: .factory/prompts/adversary-coverage.md
+
+  # Typprüfung. Repositorien ohne Typsystem lassen diesen Abschnitt weg; dann
+  # wird der Schritt nicht aufgerufen.
+  typecheck:
+    command: "PLATZHALTER-BEFEHL"
+    allowed_command_prefixes:
+      - "npm run "
+    setup: node
+    runtime_version: "20"
+
+  # Testlauf. Ein Repositorium ohne Testsuite lässt den Abschnitt weg. Das ist
+  # ein bewusster Verzicht und kein Versehen: ohne Tests trägt die
+  # Abdeckungsprüfung nicht, und das gehört im Vorgang festgehalten.
+  tests:
+    command: "PLATZHALTER-BEFEHL"
+    allowed_command_prefixes:
+      - "npm run "
+    setup: node
+    runtime_version: "20"
+    tc_id_pattern: "TC-[0-9]+"
+    # Dienste werden nur gestartet, wenn die Liste der zulässigen Abbilder
+    # gesetzt ist und jedes Abbild darauf passt.
+    # services:
+    #   - image: "platzhalter-datenbank:00"
+    #     env:
+    #       PLATZHALTER_PASSWORT: "nur-fuer-den-lauf"
+    #     ports: ["0000:0000"]
+    # allowed_service_images:
+    #   - "platzhalter-datenbank:00"
+
+  test-integrity:
+    protected_paths:
+      - "tests/**"
+
+  code-review:
+    max_turns: 15
+    second_review: false
+    prompt_extension_path: .factory/prompts/adversary-code.md
+
+  doc-check:
+    doc_map_file: .factory/doc-map.yml
+    run_adversarial: true
+    prompt_extension_path: .factory/prompts/adversary-doc.md
+
+  # Je Umgebung ein Eintrag. Welche Umgebungen es gibt, entscheidet dieses
+  # Repositorium; der Kern kennt keine und setzt kein Auslieferungsziel voraus.
+  # Der Befehl kann ebenso gut eine Datei irgendwohin spiegeln wie einen
+  # Anbieter aufrufen.
+  deploy:
+    platzhalter-vorschau:
+      deploy_command: "PLATZHALTER-BEFEHL"
+      allowed_command_prefixes:
+        - "npm run "
+      health_check_url: "https://vorschau.example.invalid/health"
+      expected_status: 200
+      expected_text: "ok"
+      rollback_command: "PLATZHALTER-BEFEHL"
+
+    platzhalter-integration:
+      deploy_command: "PLATZHALTER-BEFEHL"
+      health_check_url: "https://integration.example.invalid/health"
+      expected_status: 200
+      smoke_tests:
+        - url: "https://integration.example.invalid/"
+          expected_status: 200

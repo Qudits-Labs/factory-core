@@ -1,0 +1,39 @@
+# Beispielzuordnung mit Platzhaltern.
+#
+# Diese Datei gehört in das Produktrepositorium unter `.factory/doc-map.yml`.
+# Der Aufbau steht in schemas/doc-map.schema.json.
+#
+# Sie beantwortet eine Frage: welche Dokumentationsdatei muss sich ändern, wenn
+# sich eine bestimmte Sorte Code ändert. Das Erkennungsmuster kommt aus diesem
+# Repositorium, weil nur hier bekannt ist, wie ein Bezeichner aussieht. Der Kern
+# wendet das Muster an, ohne es zu kennen.
+#
+# Jedes `entity_pattern` hat genau eine Fanggruppe. Was sie fängt, gilt als
+# Bezeichner und muss in einer der genannten Dokumentationsdateien stehen.
+
+- name: PLATZHALTER-Schnittstellen
+  paths:
+    - "PLATZHALTER/pfad/**"
+  docs:
+    - "docs/architecture.md"
+  entity_kind: Schnittstelle
+  entity_pattern: "PLATZHALTER-MUSTER-MIT-EINER-(GRUPPE)"
+
+- name: PLATZHALTER-Datenmodell
+  paths:
+    - "PLATZHALTER/pfad/**"
+  docs:
+    - "docs/data-model.md"
+  entity_kind: Tabelle
+  entity_pattern: "PLATZHALTER-MUSTER-MIT-EINER-(GRUPPE)"
+
+- name: PLATZHALTER-Betrieb
+  paths:
+    - ".github/workflows/**"
+    - ".env.example"
+  docs:
+    - "docs/runbook.md"
+  entity_kind: Umgebungsvariable
+  entity_pattern: "PLATZHALTER-MUSTER-MIT-EINER-(GRUPPE)"
+  exempt_paths:
+    - ".github/workflows/PLATZHALTER-ausnahme.yml"
