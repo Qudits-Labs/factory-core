@@ -76,6 +76,9 @@ on:
       rollback_executed:
         description: true wenn ein Rollback ausgefuehrt wurde
         value: ${{ jobs.deployment.outputs.rollback_executed }}
+      findings_json:
+        description: JSON-Array der Befunde
+        value: ${{ jobs.deployment.outputs.findings_json }}
 
 permissions:
   contents: read
@@ -91,6 +94,7 @@ jobs:
       deployment_url: ${{ inputs.health_check_url }}
       health_check_result: ${{ steps.health.outputs.health_check_result }}
       rollback_executed: ${{ steps.health.outputs.rollback_executed }}
+      findings_json: ${{ steps.health.outputs.findings_json }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
