@@ -1,0 +1,16 @@
+## Kontext
+
+Als Sachbearbeiterin brauche ich eine Exportfunktion,
+weil wir Berichte an externe Stellen liefern muessen.
+
+## Ziel
+
+Eine CSV-Datei mit den gefilterten Ergebnissen herunterladen koennen.
+
+## Akzeptanzkriterien
+
+- [x] Export-Schaltflaeche erscheint in der Ergebnisliste
+- [ ] Dateiname enthaelt Datum und Filterbezeichnung
+- [ ] Download startet ohne zusaetzlichen Klick im Browser
+
+<!-- nutzen: Spart ca. 2 Stunden manueller Arbeit pro Woche -->

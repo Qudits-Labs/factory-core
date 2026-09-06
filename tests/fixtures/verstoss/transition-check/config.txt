@@ -1,0 +1,6 @@
+actor_login=mallory
+transition_identity_login=factory-bot
+human_gate_logins=alice,bob
+new_label=status:in-review
+max_attempts=3
+current_attempts=0

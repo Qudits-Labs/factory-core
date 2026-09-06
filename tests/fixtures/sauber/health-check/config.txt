@@ -1,0 +1,5 @@
+url=http://example.invalid/health
+expected_status=200
+expected_text=ok
+retries=1
+retry_delay=0
