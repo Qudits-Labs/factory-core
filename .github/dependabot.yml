@@ -1,0 +1,15 @@
+# Die Actions dieses Repositoriums sind auf Commit-SHA gepinnt. Ein Pin ohne
+# Nachführung veraltet still: er bleibt gültig, während die Fassung dahinter
+# Fehler behält, die anderswo längst behoben sind.
+#
+# Dependabot macht daraus einen sichtbaren Pull Request. Dasselbe Muster
+# empfiehlt das README den Produktrepositorien für den Verweis auf diesen Kern;
+# was hier verlangt wird, gilt hier auch.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "actions"
