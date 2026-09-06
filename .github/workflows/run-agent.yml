@@ -11,10 +11,12 @@ name: Agenten-Lauf
 # Sicherheitsnotizen:
 # - github_token wird der Action NICHT uebergeben. Commits der Action loesen
 #   sonst keine Folge-Workflows aus.
-# - action_sha und core_ref muessen vom Aufrufer als gepinnte SHAs uebergeben
-#   werden. Tags sind nicht zulaessig.
-#
-# Fremde Actions sind auf einen vom Aufrufer uebergebenen Commit-SHA gepinnt.
+# - Die Action ist auf einen fest codierten Commit-SHA gepinnt, der dem Tag
+#   v1.0.217 entspricht. Aufrufer koennen die Version nicht uebersteuern.
+#   Ein variabler action_sha-Input wuerde erlauben, den Kern gepinnt
+#   einzubinden und trotzdem eine andere Action-Version einzuschleusen.
+# - Fremde Actions (checkout, setup-python) sind auf gepinnte Commit-SHAs
+#   eingebunden.
 
 on:
   workflow_call:
@@ -30,8 +32,8 @@ on:
         description: Nummer des Issues, auf dem der Agent arbeitet
         required: true
         type: number
-      prompt_extension_path:
-        description: Optionaler Pfad zu einer Prompt-Erweiterung im aufrufenden Repo
+      prompt_extension:
+        description: Optionale Prompt-Erweiterung als Zeichenkette
         required: false
         type: string
         default: ''
@@ -45,10 +47,6 @@ on:
         required: false
         type: string
         default: ''
-      action_sha:
-        description: Commit-SHA der claude-code-action (gepinnt, kein Tag)
-        required: true
-        type: string
       core_ref:
         description: SHA dieses Repositoriums, um den Rollenrahmen zu laden
         required: true
@@ -129,13 +127,15 @@ jobs:
           PYEOF
 
       # -----------------------------------------------------------------------
-      # Schritt 2: Rollenrahmen aus diesem Repo laden (core_ref-Checkout)
+      # Schritt 2: Rollenrahmen aus diesem Repo laden und Prompt zusammenstellen
+      # Die Erweiterung kommt als Zeichenkette aus der Umgebungsvariable
+      # GATE_PROMPT_EXT -- kein Dateipfad, keine Job-Artefakte.
       # -----------------------------------------------------------------------
       - name: Rollenrahmen laden
         env:
           GATE_ROLE: ${{ inputs.role }}
           GATE_CORE_REF: ${{ inputs.core_ref }}
-          GATE_PROMPT_EXT: ${{ inputs.prompt_extension_path }}
+          GATE_PROMPT_EXT: ${{ inputs.prompt_extension }}
         run: |
           python3 - << 'PYEOF'
           import os
@@ -154,16 +154,9 @@ jobs:
 
           rahmen_inhalt = rollenrahmen.read_text(encoding="utf-8")
 
-          ext_pfad = os.environ.get("GATE_PROMPT_EXT", "")
-          if ext_pfad:
-              ext_datei = Path(ext_pfad)
-              if ext_datei.exists():
-                  rahmen_inhalt += "\n\n" + ext_datei.read_text(encoding="utf-8")
-              else:
-                  print(
-                      f"WARNUNG: prompt_extension_path '{ext_pfad}' existiert nicht,"
-                      " wird ignoriert."
-                  )
+          erweiterung = os.environ.get("GATE_PROMPT_EXT", "").strip()
+          if erweiterung:
+              rahmen_inhalt += "\n\n" + erweiterung
 
           # Zusammengesetzten Prompt fuer die Action bereitstellen
           out = Path("/tmp/agent_prompt.md")
@@ -175,10 +168,12 @@ jobs:
       # Schritt 3: Agentenlauf (claude-code-action)
       # Kein github_token -- Commits der Action loesen sonst keine
       # Folge-Workflows aus.
+      # Action hart auf v1.0.217 gepinnt; der SHA wurde einmalig extern
+      # verifiziert und ist nicht ueberschreibbar.
       # -----------------------------------------------------------------------
       - name: Agenten-Lauf starten
         id: agent_lauf
-        uses: anthropics/claude-code-action@${{ inputs.action_sha }}
+        uses: anthropics/claude-code-action@9c5ddab2e6d17b83ea679153b31f1d5f023cf636 # v1.0.217
         with:
           anthropic_api_key: ${{ secrets.anthropic_api_key }}
           prompt_file: /tmp/agent_prompt.md
@@ -261,7 +256,6 @@ jobs:
                       f.write(f"{k}={v}\n")
 
           ergebnis_datei = Path(".factory/result.json")
-          schema_gueltig = True
 
           if ergebnis_datei.exists():
               try:

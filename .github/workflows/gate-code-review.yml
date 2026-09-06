@@ -8,6 +8,11 @@ name: G8/G9 Code-Review (Adversary + Scope-Pruefung)
 # als Kontext uebergeben -- nicht als Urteil. Der Agent entscheidet, ob
 # die Abweichungen gerechtfertigt sind.
 #
+# Drei-Job-Struktur:
+#   vorbereitung  -- Checkout, Scope-Vergleich, Scope-Kontext als String
+#   agent         -- Aufruf von run-agent.yml auf Job-Ebene
+#   auswertung    -- Ergebnis auswerten, Pass/Fail bestimmen
+#
 # UNGETESTET -- dieser Workflow laeuft erst mit der ersten echten Anbindung
 # eines Produktrepos und einer genehmigten GitHub App. Bis dahin ist er
 # nicht end-to-end pruefbar.
@@ -41,10 +46,6 @@ on:
         required: false
         type: number
         default: 20
-      action_sha:
-        description: Commit-SHA der claude-code-action
-        required: true
-        type: string
       core_ref:
         description: SHA dieses Repositoriums fuer den Rollenrahmen
         required: true
@@ -52,13 +53,13 @@ on:
     outputs:
       pass:
         description: true wenn kein BLOCK-Befund
-        value: ${{ jobs.codereview.outputs.pass }}
+        value: ${{ jobs.auswertung.outputs.pass }}
       scope_violations:
         description: JSON-Array der Dateien ausserhalb des Scopes
-        value: ${{ jobs.codereview.outputs.scope_violations }}
+        value: ${{ jobs.vorbereitung.outputs.scope_violations }}
       findings_json:
         description: JSON-Array aller Befunde
-        value: ${{ jobs.codereview.outputs.findings_json }}
+        value: ${{ jobs.auswertung.outputs.findings_json }}
     secrets:
       anthropic_api_key:
         description: Anthropic API-Schluessel fuer den Agentenlauf
@@ -70,13 +71,15 @@ permissions:
   pull-requests: write
 
 jobs:
-  codereview:
-    name: Code-Review (G8 + G9)
+  # ---------------------------------------------------------------------------
+  # Job 1: Scope-Vergleich (G9) und Kontext-Aufbereitung
+  # ---------------------------------------------------------------------------
+  vorbereitung:
+    name: Scope-Vergleich (G9)
     runs-on: ubuntu-latest
     outputs:
-      pass: ${{ steps.auswertung.outputs.pass }}
       scope_violations: ${{ steps.scope.outputs.scope_violations }}
-      findings_json: ${{ steps.auswertung.outputs.findings_json }}
+      scope_context: ${{ steps.scope.outputs.scope_context }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
@@ -88,7 +91,8 @@ jobs:
 
       # -----------------------------------------------------------------------
       # Schritt 1 (G9): Maschineller Scope-Vergleich
-      # Abweichungen werden als Kontext an den Agenten uebergeben, nicht als Urteil.
+      # Abweichungen werden als Kontext-String an den Agenten uebergeben,
+      # nicht als Urteil. Multiline-Output ueber Delimiter-Syntax.
       # -----------------------------------------------------------------------
       - name: Scope-Vergleich (G9)
         id: scope
@@ -110,15 +114,29 @@ jobs:
           scope_muster = [m.strip() for m in scope_roh.split(",") if m.strip()]
 
           github_output = os.environ.get("GITHUB_OUTPUT", "")
-          def schreibe(k, v):
+          DELIMITER = "FACTORY_EOF"
+
+          def schreibe_einfach(k, v):
               if github_output:
                   with open(github_output, "a") as f:
                       f.write(f"{k}={v}\n")
 
+          def schreibe_multiline(k, inhalt):
+              if not github_output:
+                  return
+              if DELIMITER in inhalt:
+                  print(
+                      f"FEHLER: Delimiter '{DELIMITER}' kommt im Scope-Kontext vor.",
+                      file=sys.stderr,
+                  )
+                  sys.exit(2)
+              with open(github_output, "a") as f:
+                  f.write(f"{k}<<{DELIMITER}\n{inhalt}\n{DELIMITER}\n")
+
           if not scope_muster:
               print("Kein declared_scope_paths gesetzt -- Scope-Pruefung uebersprungen.")
-              schreibe("scope_violations", "[]")
-              schreibe("scope_context", "")
+              schreibe_einfach("scope_violations", "[]")
+              schreibe_multiline("scope_context", "")
               sys.exit(0)
 
           lauf = subprocess.run(
@@ -135,7 +153,7 @@ jobs:
               if not any(fnmatch.fnmatch(f, m) for m in scope_muster)
           ]
 
-          schreibe("scope_violations", json.dumps(ausserhalb))
+          schreibe_einfach("scope_violations", json.dumps(ausserhalb))
 
           if ausserhalb:
               kontext = (
@@ -144,41 +162,50 @@ jobs:
                   "deklarierten Scopes. Pruefe, ob die Aenderungen gerechtfertigt sind:\n\n"
                   + "\n".join(f"- `{f}`" for f in ausserhalb)
               )
-              kontext_datei = "/tmp/scope_context.md"
-              with open(kontext_datei, "w", encoding="utf-8") as f:
-                  f.write(kontext)
-              schreibe("scope_context", kontext_datei)
-              print(f"{len(ausserhalb)} Datei(en) ausserhalb des Scopes -- wird Agenten als Kontext uebergeben.")
+              schreibe_multiline("scope_context", kontext)
+              print(
+                  f"{len(ausserhalb)} Datei(en) ausserhalb des Scopes"
+                  " -- wird Agenten als Kontext uebergeben."
+              )
           else:
-              schreibe("scope_context", "")
+              schreibe_multiline("scope_context", "")
               print("Alle geaenderten Dateien liegen im deklarierten Scope.")
           PYEOF
 
-      # -----------------------------------------------------------------------
-      # Schritt 2 (G8): Agentenlauf (Adversary)
-      # -----------------------------------------------------------------------
-      - name: Agentenlauf (Adversary, G8)
-        id: agent
-        uses: ./.github/workflows/run-agent.yml
-        with:
-          role: adversary
-          issue_number: ${{ inputs.issue_number }}
-          prompt_extension_path: ${{ steps.scope.outputs.scope_context }}
-          max_turns: ${{ inputs.max_turns }}
-          action_sha: ${{ inputs.action_sha }}
-          core_ref: ${{ inputs.core_ref }}
-        secrets:
-          anthropic_api_key: ${{ secrets.anthropic_api_key }}
+  # ---------------------------------------------------------------------------
+  # Job 2: Agentenlauf (Adversary, G8)
+  # Ein wiederverwendbarer Workflow wird auf Job-Ebene eingebunden.
+  # ---------------------------------------------------------------------------
+  agent:
+    name: Agentenlauf (Adversary, G8)
+    needs: vorbereitung
+    uses: ./.github/workflows/run-agent.yml
+    with:
+      role: adversary
+      issue_number: ${{ inputs.issue_number }}
+      prompt_extension: ${{ needs.vorbereitung.outputs.scope_context }}
+      max_turns: ${{ inputs.max_turns }}
+      core_ref: ${{ inputs.core_ref }}
+    secrets:
+      anthropic_api_key: ${{ secrets.anthropic_api_key }}
 
-      # -----------------------------------------------------------------------
-      # Schritt 3: Ergebnis auswerten
-      # -----------------------------------------------------------------------
+  # ---------------------------------------------------------------------------
+  # Job 3: Ergebnis auswerten
+  # ---------------------------------------------------------------------------
+  auswertung:
+    name: Ergebnis auswerten
+    needs: [vorbereitung, agent]
+    if: always()
+    runs-on: ubuntu-latest
+    outputs:
+      pass: ${{ steps.auswertung.outputs.pass }}
+      findings_json: ${{ steps.auswertung.outputs.findings_json }}
+    steps:
       - name: Ergebnis auswerten
         id: auswertung
-        if: always()
         env:
-          GATE_RESULT_JSON: ${{ steps.agent.outputs.result_json }}
-          GATE_SCHEMA_VALID: ${{ steps.agent.outputs.schema_valid }}
+          GATE_RESULT_JSON: ${{ needs.agent.outputs.result_json }}
+          GATE_SCHEMA_VALID: ${{ needs.agent.outputs.schema_valid }}
         run: |
           python3 - << 'PYEOF'
           import json

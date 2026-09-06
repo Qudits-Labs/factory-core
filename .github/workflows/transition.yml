@@ -5,6 +5,11 @@ name: Zustandsmaschine -- Uebergang pruefen und ausloesen
 # schreibt einen Attempt-Eintrag ins Issue, startet den Agentenlauf
 # und setzt anschliessend das naechste Label.
 #
+# Drei-Job-Struktur:
+#   pruefung      -- Akteur-Check, Unauthorized-Zweig, Attempt-Eintrag
+#   agent         -- Aufruf von run-agent.yml auf Job-Ebene (nur bei allowed)
+#   nachbereitung -- Ergebnis pruefen, naechstes Label setzen
+#
 # UNGETESTET -- dieser Workflow laeuft erst mit der ersten echten Anbindung
 # eines Produktrepos und einer genehmigten GitHub App. Bis dahin ist er
 # nicht end-to-end pruefbar.
@@ -56,10 +61,6 @@ on:
         required: false
         type: number
         default: 3
-      action_sha:
-        description: Commit-SHA der claude-code-action
-        required: true
-        type: string
       core_ref:
         description: SHA dieses Repositoriums fuer den Rollenrahmen
         required: true
@@ -67,13 +68,13 @@ on:
     outputs:
       allowed:
         description: true wenn der Uebergang erlaubt war
-        value: ${{ jobs.uebergang.outputs.allowed }}
+        value: ${{ jobs.pruefung.outputs.allowed }}
       role_name:
         description: Rollenname fuer das Ziel-Label
-        value: ${{ jobs.uebergang.outputs.role_name }}
+        value: ${{ jobs.pruefung.outputs.role_name }}
       agent_status:
         description: Ergebnis des Agentenlaufs
-        value: ${{ jobs.uebergang.outputs.agent_status }}
+        value: ${{ jobs.nachbereitung.outputs.status }}
     secrets:
       transition_token:
         description: GitHub-Token fuer Label- und Kommentar-Operationen
@@ -87,13 +88,16 @@ permissions:
   contents: read
 
 jobs:
-  uebergang:
+  # ---------------------------------------------------------------------------
+  # Job 1: Akteur-Berechtigung pruefen, Unauthorized behandeln, Attempt schreiben
+  # ---------------------------------------------------------------------------
+  pruefung:
     name: Zustandsuebergang (${{ inputs.new_label }})
     runs-on: ubuntu-latest
     outputs:
       allowed: ${{ steps.pruefung.outputs.allowed }}
       role_name: ${{ steps.pruefung.outputs.role_name }}
-      agent_status: ${{ steps.agent_ergebnis.outputs.status || 'skipped' }}
+      human_intervention: ${{ steps.pruefung.outputs.human_intervention }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
@@ -211,33 +215,47 @@ jobs:
           print(f"Attempt-Eintrag gesetzt fuer Run {run_id}")
           PYEOF
 
-      # -----------------------------------------------------------------------
-      # Schritt 4: Agentenlauf starten
-      # -----------------------------------------------------------------------
-      - name: Agentenlauf starten
-        id: agent_lauf
-        if: steps.pruefung.outputs.allowed == 'true'
-        uses: ./.github/workflows/run-agent.yml
-        with:
-          role: ${{ steps.pruefung.outputs.role_name }}
-          issue_number: ${{ inputs.issue_number }}
-          action_sha: ${{ inputs.action_sha }}
-          core_ref: ${{ inputs.core_ref }}
-        secrets:
-          anthropic_api_key: ${{ secrets.anthropic_api_key }}
+  # ---------------------------------------------------------------------------
+  # Job 2: Agentenlauf -- nur wenn der Uebergang erlaubt ist
+  # Ein wiederverwendbarer Workflow wird auf Job-Ebene eingebunden.
+  # ---------------------------------------------------------------------------
+  agent:
+    name: Agenten-Lauf
+    needs: pruefung
+    if: needs.pruefung.outputs.allowed == 'true'
+    uses: ./.github/workflows/run-agent.yml
+    with:
+      role: ${{ needs.pruefung.outputs.role_name }}
+      issue_number: ${{ inputs.issue_number }}
+      core_ref: ${{ inputs.core_ref }}
+    secrets:
+      anthropic_api_key: ${{ secrets.anthropic_api_key }}
 
-      # -----------------------------------------------------------------------
-      # Schritt 5: Ergebnis pruefen und naechstes Label setzen
-      # -----------------------------------------------------------------------
+  # ---------------------------------------------------------------------------
+  # Job 3: Ergebnis pruefen und naechstes Label setzen
+  # ---------------------------------------------------------------------------
+  nachbereitung:
+    name: Ergebnis auswerten und Label setzen
+    needs: [pruefung, agent]
+    if: always() && needs.pruefung.outputs.allowed == 'true'
+    runs-on: ubuntu-latest
+    outputs:
+      status: ${{ steps.agent_ergebnis.outputs.status }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+
       - name: Ergebnis auswerten und Label setzen
         id: agent_ergebnis
-        if: steps.pruefung.outputs.allowed == 'true'
         env:
           GH_TOKEN: ${{ secrets.transition_token }}
           GATE_ISSUE: ${{ inputs.issue_number }}
           GATE_NEW_LABEL: ${{ inputs.new_label }}
-          GATE_AGENT_STATUS: ${{ steps.agent_lauf.outputs.status || 'agent_error' }}
-          GATE_SCHEMA_VALID: ${{ steps.agent_lauf.outputs.schema_valid || 'false' }}
+          GATE_AGENT_STATUS: ${{ needs.agent.outputs.status || 'agent_error' }}
+          GATE_SCHEMA_VALID: ${{ needs.agent.outputs.schema_valid || 'false' }}
           GATE_RUN_ID: ${{ github.run_id }}
         run: |
           python3 - << 'PYEOF'
