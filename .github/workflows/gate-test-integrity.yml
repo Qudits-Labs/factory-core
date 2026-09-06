@@ -1,0 +1,60 @@
+name: G7 Testdatei-Integritaet pruefen
+
+# Schuetzt geschuetzte Testpfade vor stillschweigender Anpassung.
+# Fehlt die Baseline, endet der Workflow mit Fehler -- nie mit stillem PASS.
+#
+# Fremde Actions sind auf einen Commit-SHA gepinnt.
+
+on:
+  workflow_call:
+    inputs:
+      baseline_sha:
+        description: >
+          Baseline-Commit-SHA. Wird dieses Feld leer uebergeben, bricht der
+          Workflow ab -- eine unbekannte Baseline ist ein Fehler, kein PASS.
+        required: true
+        type: string
+      head_sha:
+        description: Head-Commit-SHA
+        required: true
+        type: string
+      protected_paths:
+        description: Komma-getrennte Glob-Muster fuer geschuetzte Pfade
+        required: true
+        type: string
+    outputs:
+      pass:
+        description: true wenn keine geschuetzten Dateien geaendert wurden
+        value: ${{ jobs.integritaet.outputs.pass }}
+      changed_files:
+        description: JSON-Array der geaenderten Dateien im Diff
+        value: ${{ jobs.integritaet.outputs.changed_files }}
+      findings_json:
+        description: JSON-Array der Verletzungen
+        value: ${{ jobs.integritaet.outputs.findings_json }}
+
+permissions:
+  contents: read
+
+jobs:
+  integritaet:
+    name: Testdatei-Integritaet
+    runs-on: ubuntu-latest
+    outputs:
+      pass: ${{ steps.pruefung.outputs.pass }}
+      changed_files: ${{ steps.pruefung.outputs.changed_files }}
+      findings_json: ${{ steps.pruefung.outputs.findings_json }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      - name: Testdatei-Integritaet pruefen
+        id: pruefung
+        env:
+          GATE_BASELINE_SHA: ${{ inputs.baseline_sha }}
+          GATE_HEAD_SHA: ${{ inputs.head_sha }}
+          GATE_PROTECTED_PATHS: ${{ inputs.protected_paths }}
+        run: python3 scripts/gate_test_integrity.py

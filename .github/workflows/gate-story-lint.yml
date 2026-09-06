@@ -1,0 +1,61 @@
+name: G1 Story-Reife pruefen
+
+# Prueft rein strukturell, ob ein Issue als Story bereit ist:
+# Pflichtabschnitte, AK-Checkboxen, Nutzenmarker, Label-Praefixe.
+# Keine semantische Bewertung.
+#
+# Fremde Actions sind auf einen Commit-SHA gepinnt. Ein Tag laesst sich
+# verschieben, ein SHA nicht.
+
+on:
+  workflow_call:
+    inputs:
+      issue_body:
+        description: Inhalt des Issue-Body
+        required: true
+        type: string
+      issue_labels:
+        description: Komma-getrennte Labels des Issues
+        required: true
+        type: string
+      required_label_prefixes:
+        description: Komma-getrennte Praefix-Liste (z.B. "profile:,status:")
+        required: false
+        type: string
+        default: ''
+      nutzen_marker_required:
+        description: 'Ob der Nutzenmarker <!-- nutzen: ... --> Pflicht ist'
+        required: false
+        type: boolean
+        default: true
+    outputs:
+      pass:
+        description: true wenn alle Pruefungen bestanden
+        value: ${{ jobs.lint.outputs.pass }}
+      findings_json:
+        description: JSON-Array der Befunde
+        value: ${{ jobs.lint.outputs.findings_json }}
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Story-Lint
+    runs-on: ubuntu-latest
+    outputs:
+      pass: ${{ steps.pruefung.outputs.pass }}
+      findings_json: ${{ steps.pruefung.outputs.findings_json }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      - name: Story-Reife pruefen
+        id: pruefung
+        env:
+          GATE_ISSUE_BODY: ${{ inputs.issue_body }}
+          GATE_ISSUE_LABELS: ${{ inputs.issue_labels }}
+          GATE_REQUIRED_LABEL_PREFIXES: ${{ inputs.required_label_prefixes }}
+          GATE_NUTZEN_REQUIRED: ${{ inputs.nutzen_marker_required }}
+        run: python3 scripts/gate_story_lint.py

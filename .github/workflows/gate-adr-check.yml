@@ -1,0 +1,64 @@
+name: G2 ADR-Substanz pruefen
+
+# Prueft strukturell, ob ein Architecture Decision Record die Pflichtabschnitte
+# enthaelt und genuegend Alternativen mit Ausschlussgrund aufweist.
+#
+# Fremde Actions sind auf einen Commit-SHA gepinnt.
+
+on:
+  workflow_call:
+    inputs:
+      adr_path:
+        description: Pfad zur ADR-Datei im aufrufenden Repositorium
+        required: true
+        type: string
+      required_sections:
+        description: >
+          Komma-getrennte Liste der Pflichtabschnitte
+          (Default: Kontext,Entscheidung,Alternativen,Betriebsfolgen,Status)
+        required: false
+        type: string
+        default: ''
+      min_alternatives:
+        description: Mindestanzahl Alternativen mit Ausschlussgrund
+        required: false
+        type: number
+        default: 2
+    outputs:
+      pass:
+        description: true wenn alle Pruefungen bestanden
+        value: ${{ jobs.adr.outputs.pass }}
+      missing_sections:
+        description: JSON-Array fehlender Abschnitte
+        value: ${{ jobs.adr.outputs.missing_sections }}
+      alternatives_count:
+        description: Anzahl erkannter Alternativen mit Ausschlussgrund
+        value: ${{ jobs.adr.outputs.alternatives_count }}
+      findings_json:
+        description: JSON-Array der Befunde
+        value: ${{ jobs.adr.outputs.findings_json }}
+
+permissions:
+  contents: read
+
+jobs:
+  adr:
+    name: ADR-Substanzpruefung
+    runs-on: ubuntu-latest
+    outputs:
+      pass: ${{ steps.pruefung.outputs.pass }}
+      missing_sections: ${{ steps.pruefung.outputs.missing_sections }}
+      alternatives_count: ${{ steps.pruefung.outputs.alternatives_count }}
+      findings_json: ${{ steps.pruefung.outputs.findings_json }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      - name: ADR-Substanz pruefen
+        id: pruefung
+        env:
+          GATE_ADR_PATH: ${{ inputs.adr_path }}
+          GATE_REQUIRED_SECTIONS: ${{ inputs.required_sections }}
+          GATE_MIN_ALTERNATIVES: ${{ inputs.min_alternatives }}
+        run: python3 scripts/gate_adr_check.py

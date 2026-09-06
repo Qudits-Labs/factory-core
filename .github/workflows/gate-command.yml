@@ -1,0 +1,282 @@
+name: G5/G6 Befehl validieren und ausfuehren
+
+# Deckt G5 (Typenpruefung/Befehlsvalidierung) und G6 (Testausfuehrung) ab.
+# Ein Workflow statt zwei fast gleicher.
+#
+# Sicherheitsauflage: `command` wird ausschliesslich ueber eine
+# Umgebungsvariable in den Ausfuehrungsschritt gereicht, nie interpoliert.
+# Die Praefix-Pruefung laeuft in Python, nicht in der Shell.
+#
+# Ist `allowed_command_prefixes` leer, laeuft der Befehl -- der Workflow
+# schreibt eine sichtbare Warnung in die Job-Zusammenfassung. Die eigentliche
+# Absicherung ist der Schreibschutz auf der Konfigurationsdatei im Produktrepo.
+#
+# `services_json` wird nur akzeptiert, wenn zusaetzlich `allowed_service_images`
+# gesetzt ist und jedes Image darauf passt. Sonst Abbruch.
+#
+# Fremde Actions sind auf einen Commit-SHA gepinnt.
+
+on:
+  workflow_call:
+    inputs:
+      command:
+        description: Auszufuehrender Befehl
+        required: true
+        type: string
+      working_directory:
+        description: Arbeitsverzeichnis fuer den Befehl
+        required: false
+        type: string
+        default: '.'
+      allowed_command_prefixes:
+        description: Komma-getrennte erlaubte Befehlspraefixe (leer = keine Einschraenkung)
+        required: false
+        type: string
+        default: ''
+      setup:
+        description: Laufzeitumgebung einrichten (node, python oder leer)
+        required: false
+        type: string
+        default: ''
+      runtime_version:
+        description: Version der Laufzeitumgebung (z.B. "3.12" oder "20")
+        required: false
+        type: string
+        default: ''
+      tc_id_pattern:
+        description: Regex zum Extrahieren von Testfall-IDs aus der Ausgabe
+        required: false
+        type: string
+        default: ''
+      services_json:
+        description: >
+          JSON-Array von Service-Definitionen (image, name, ports).
+          Nur gueltig zusammen mit allowed_service_images.
+        required: false
+        type: string
+        default: ''
+      allowed_service_images:
+        description: Komma-getrennte erlaubte Container-Images fuer Services
+        required: false
+        type: string
+        default: ''
+      report_artifact_name:
+        description: Name des Artefakts fuer den Testergebnis-Bericht
+        required: false
+        type: string
+        default: 'test-report'
+    outputs:
+      pass:
+        description: true wenn der Befehl mit Exit 0 endete
+        value: ${{ jobs.ausfuehren.outputs.pass }}
+      exit_code:
+        description: Tatsaechlicher Exit-Code des Befehls
+        value: ${{ jobs.ausfuehren.outputs.exit_code }}
+      tc_ids_found:
+        description: JSON-Array gefundener Testfall-IDs
+        value: ${{ jobs.ausfuehren.outputs.tc_ids_found }}
+      report_json:
+        description: Strukturierter Bericht als JSON-String
+        value: ${{ jobs.ausfuehren.outputs.report_json }}
+
+permissions:
+  contents: read
+
+jobs:
+  ausfuehren:
+    name: Befehl validieren und ausfuehren
+    runs-on: ubuntu-latest
+    outputs:
+      pass: ${{ steps.ergebnis.outputs.pass }}
+      exit_code: ${{ steps.ergebnis.outputs.exit_code }}
+      tc_ids_found: ${{ steps.ergebnis.outputs.tc_ids_found }}
+      report_json: ${{ steps.ergebnis.outputs.report_json }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      # -----------------------------------------------------------------------
+      # Schritt 1: Befehlspraefix validieren (Python, kein Shell-Interpolieren)
+      # -----------------------------------------------------------------------
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+
+      - name: Befehlspraefix validieren
+        env:
+          GATE_COMMAND: ${{ inputs.command }}
+          GATE_ALLOWED_COMMAND_PREFIXES: ${{ inputs.allowed_command_prefixes }}
+        run: python3 scripts/gate_command_report.py
+
+      # -----------------------------------------------------------------------
+      # Schritt 2: Service-Images validieren (wenn services_json gesetzt)
+      # -----------------------------------------------------------------------
+      - name: Service-Images validieren
+        if: inputs.services_json != ''
+        env:
+          GATE_SERVICES_JSON: ${{ inputs.services_json }}
+          GATE_ALLOWED_SERVICE_IMAGES: ${{ inputs.allowed_service_images }}
+        run: |
+          python3 - << 'PYEOF'
+          import json
+          import os
+          import sys
+
+          services_roh = os.environ.get("GATE_SERVICES_JSON", "")
+          erlaubt_roh = os.environ.get("GATE_ALLOWED_SERVICE_IMAGES", "")
+
+          if not erlaubt_roh:
+              print(
+                  "FEHLER: services_json gesetzt, aber allowed_service_images fehlt."
+                  " Ohne Allowlist kein Container-Start.",
+                  file=sys.stderr,
+              )
+              sys.exit(1)
+
+          try:
+              services = json.loads(services_roh)
+          except json.JSONDecodeError as e:
+              print(f"FEHLER: services_json ist kein gueltiges JSON: {e}", file=sys.stderr)
+              sys.exit(2)
+
+          erlaubte = [img.strip() for img in erlaubt_roh.split(",") if img.strip()]
+          for svc in services:
+              image = svc.get("image", "")
+              if not any(image == e or image.startswith(e + ":") for e in erlaubte):
+                  print(
+                      f"FEHLER: Service-Image '{image}' nicht in allowed_service_images:"
+                      f" {', '.join(erlaubte)}",
+                      file=sys.stderr,
+                  )
+                  sys.exit(1)
+
+          print(f"{len(services)} Service(s) validiert.")
+          PYEOF
+
+      # -----------------------------------------------------------------------
+      # Schritt 3: Laufzeitumgebung einrichten (optional)
+      # -----------------------------------------------------------------------
+      - uses: actions/setup-node@cdca7365b2dadb8aad0a33bc7601856ffabcc48e # v4
+        if: inputs.setup == 'node'
+        with:
+          node-version: ${{ inputs.runtime_version || '20' }}
+
+      # Python ist bereits installiert (Schritt 1), nur Version abgleichen
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        if: inputs.setup == 'python' && inputs.runtime_version != ''
+        with:
+          python-version: ${{ inputs.runtime_version }}
+
+      # -----------------------------------------------------------------------
+      # Schritt 4: Befehl ausfuehren (Befehl kommt nur ueber Umgebungsvariable)
+      # -----------------------------------------------------------------------
+      - name: Befehl ausfuehren
+        id: ausfuehren
+        continue-on-error: true
+        env:
+          GATE_CMD: ${{ inputs.command }}
+          GATE_WORKDIR: ${{ inputs.working_directory }}
+        run: |
+          cd "$GATE_WORKDIR"
+          eval "$GATE_CMD" 2>&1 | tee /tmp/gate_cmd_output.txt
+          echo "EXIT_CODE=${PIPESTATUS[0]}" >> "$GITHUB_ENV"
+
+      # -----------------------------------------------------------------------
+      # Schritt 5: Ergebnis auswerten und Outputs setzen
+      # -----------------------------------------------------------------------
+      - name: Ergebnis auswerten
+        id: ergebnis
+        env:
+          GATE_TC_ID_PATTERN: ${{ inputs.tc_id_pattern }}
+          GATE_REPORT_NAME: ${{ inputs.report_artifact_name }}
+        run: |
+          python3 - << 'PYEOF'
+          import json
+          import os
+          import re
+
+          exit_code_str = os.environ.get("EXIT_CODE", "0")
+          try:
+              exit_code = int(exit_code_str)
+          except ValueError:
+              exit_code = 1
+
+          output_datei = "/tmp/gate_cmd_output.txt"
+          ausgabe = ""
+          try:
+              with open(output_datei, encoding="utf-8") as f:
+                  ausgabe = f.read()
+          except OSError:
+              pass
+
+          tc_ids: list[str] = []
+          muster_str = os.environ.get("GATE_TC_ID_PATTERN", "")
+          if muster_str:
+              try:
+                  muster = re.compile(muster_str)
+                  tc_ids = muster.findall(ausgabe)
+              except re.error as e:
+                  print(f"WARNUNG: tc_id_pattern ist ungueltig: {e}")
+
+          bestanden = exit_code == 0
+          bericht = {
+              "pass": bestanden,
+              "exit_code": exit_code,
+              "tc_ids_found": tc_ids,
+              "report_name": os.environ.get("GATE_REPORT_NAME", "test-report"),
+          }
+
+          github_output = os.environ.get("GITHUB_OUTPUT", "")
+          if github_output:
+              with open(github_output, "a", encoding="utf-8") as f:
+                  f.write(f"pass={'true' if bestanden else 'false'}\n")
+                  f.write(f"exit_code={exit_code}\n")
+                  f.write(f"tc_ids_found={json.dumps(tc_ids)}\n")
+                  f.write(f"report_json={json.dumps(bericht)}\n")
+
+          print(f"Exit-Code: {exit_code}, bestanden: {bestanden}")
+          if tc_ids:
+              print(f"Testfall-IDs: {', '.join(tc_ids)}")
+
+          import sys
+          sys.exit(0 if bestanden else 1)
+          PYEOF
+
+      # -----------------------------------------------------------------------
+      # Schritt 6: Bericht als Artefakt hochladen
+      # -----------------------------------------------------------------------
+      - name: Testergebnis-Artefakt erstellen
+        if: always()
+        run: |
+          python3 - << 'PYEOF'
+          import json
+          import os
+
+          exit_code_str = os.environ.get("EXIT_CODE", "0")
+          try:
+              exit_code = int(exit_code_str)
+          except ValueError:
+              exit_code = 1
+
+          ausgabe = ""
+          try:
+              with open("/tmp/gate_cmd_output.txt", encoding="utf-8") as f:
+                  ausgabe = f.read()
+          except OSError:
+              pass
+
+          bericht = {
+              "pass": exit_code == 0,
+              "exit_code": exit_code,
+              "output_excerpt": ausgabe[:4000],
+          }
+          with open("/tmp/test-report.json", "w", encoding="utf-8") as f:
+              json.dump(bericht, f, indent=2)
+          print("Bericht geschrieben: /tmp/test-report.json")
+          PYEOF
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: ${{ inputs.report_artifact_name }}
+          path: /tmp/test-report.json
+          retention-days: 14

@@ -1,0 +1,71 @@
+name: G12 Dokumentations-Vollstaendigkeit pruefen (maschineller Teil)
+
+# Prueft maschinell, ob neu hinzugekommene Code-Entitaeten in zugeordneten
+# Dokumentationsdateien stehen und ob entfernte Entitaeten dort nicht mehr
+# auftauchen. Ob die Doku inhaltlich korrekt ist, bewertet dieser Workflow
+# nicht -- das ist Aufgabe des menschlichen Reviews.
+#
+# Der Aufrufer liest die Zuordnungsdatei (doc_map.json) aus seinem Repo und
+# uebergibt ihren Inhalt als String. Damit liest dieser Kern keine Datei
+# direkt aus dem aufrufenden Repositorium.
+#
+# Fremde Actions sind auf einen Commit-SHA gepinnt.
+
+on:
+  workflow_call:
+    inputs:
+      doc_map_json:
+        description: >
+          Inhalt der Zuordnungsdatei als JSON-String. Struktur je Eintrag:
+          paths (Array Glob), docs (Array Pfad), entity_pattern (Regex mit
+          genau einer Fanggruppe).
+        required: true
+        type: string
+      base_sha:
+        description: Basis-Commit-SHA fuer den Diff
+        required: true
+        type: string
+      head_sha:
+        description: Head-Commit-SHA fuer den Diff
+        required: true
+        type: string
+    outputs:
+      mechanical_pass:
+        description: true wenn keine fehlenden oder veralteten Entitaeten
+        value: ${{ jobs.dokupruefung.outputs.mechanical_pass }}
+      missing_entities:
+        description: JSON-Array der Entitaeten, die in der Doku fehlen
+        value: ${{ jobs.dokupruefung.outputs.missing_entities }}
+      stale_entities:
+        description: JSON-Array der Entitaeten, die veraltet in der Doku stehen
+        value: ${{ jobs.dokupruefung.outputs.stale_entities }}
+      findings_json:
+        description: JSON-Array aller Befunde
+        value: ${{ jobs.dokupruefung.outputs.findings_json }}
+
+permissions:
+  contents: read
+
+jobs:
+  dokupruefung:
+    name: Dokumentations-Vollstaendigkeit
+    runs-on: ubuntu-latest
+    outputs:
+      mechanical_pass: ${{ steps.pruefung.outputs.mechanical_pass }}
+      missing_entities: ${{ steps.pruefung.outputs.missing_entities }}
+      stale_entities: ${{ steps.pruefung.outputs.stale_entities }}
+      findings_json: ${{ steps.pruefung.outputs.findings_json }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      - name: Dokumentations-Vollstaendigkeit pruefen
+        id: pruefung
+        env:
+          GATE_DOC_MAP_JSON: ${{ inputs.doc_map_json }}
+          GATE_BASE_SHA: ${{ inputs.base_sha }}
+          GATE_HEAD_SHA: ${{ inputs.head_sha }}
+        run: python3 scripts/gate_doc_check.py

@@ -1,0 +1,130 @@
+name: G11 Deployment ausfuehren und Health-Check
+
+# Fuehrt ein Deployment aus und prueft danach die Ziel-URL. Bei
+# fehlgeschlagenem Health-Check wird der optionale Rollback-Befehl
+# ausgefuehrt; der Workflow endet trotzdem als fehlgeschlagen.
+#
+# Keine Annahme ueber das Deployment-Ziel: Dieser Workflow fuehrt einen
+# Befehl aus und prueft danach eine URL. Weder eine Datenbank noch ein
+# bestimmter Anbieter wird vorausgesetzt.
+#
+# Sicherheitsauflage: `deploy_command` wird ausschliesslich ueber eine
+# Umgebungsvariable in den Schritt gereicht, nie interpoliert.
+#
+# Fremde Actions sind auf einen Commit-SHA gepinnt.
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        description: Deployment-Umgebung (z.B. staging, production)
+        required: true
+        type: string
+      deploy_command:
+        description: Auszufuehrender Deployment-Befehl
+        required: true
+        type: string
+      allowed_command_prefixes:
+        description: Komma-getrennte erlaubte Praefixe (leer = keine Einschraenkung)
+        required: false
+        type: string
+        default: ''
+      health_check_url:
+        description: URL des Health-Endpunkts
+        required: true
+        type: string
+      expected_status:
+        description: Erwarteter HTTP-Statuscode
+        required: false
+        type: number
+        default: 200
+      expected_text:
+        description: Erwarteter Text im Response-Body (optional)
+        required: false
+        type: string
+        default: ''
+      smoke_tests_json:
+        description: Optionale Smoke-Tests als JSON-Array (nicht implementiert, reserviert)
+        required: false
+        type: string
+        default: ''
+      rollback_command:
+        description: Rollback-Befehl bei fehlgeschlagenem Health-Check (optional)
+        required: false
+        type: string
+        default: ''
+      retries:
+        description: Anzahl Health-Check-Versuche
+        required: false
+        type: number
+        default: 5
+      retry_delay_seconds:
+        description: Wartezeit in Sekunden zwischen Health-Check-Versuchen
+        required: false
+        type: number
+        default: 10
+    outputs:
+      pass:
+        description: true wenn Deployment und Health-Check bestanden
+        value: ${{ jobs.deployment.outputs.pass }}
+      deployment_url:
+        description: URL, die nach dem Deployment geprueft wurde
+        value: ${{ jobs.deployment.outputs.deployment_url }}
+      health_check_result:
+        description: Beschreibung des Health-Check-Ergebnisses
+        value: ${{ jobs.deployment.outputs.health_check_result }}
+      rollback_executed:
+        description: true wenn ein Rollback ausgefuehrt wurde
+        value: ${{ jobs.deployment.outputs.rollback_executed }}
+
+permissions:
+  contents: read
+  deployments: write
+
+jobs:
+  deployment:
+    name: Deployment (${{ inputs.environment }})
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    outputs:
+      pass: ${{ steps.health.outputs.pass }}
+      deployment_url: ${{ inputs.health_check_url }}
+      health_check_result: ${{ steps.health.outputs.health_check_result }}
+      rollback_executed: ${{ steps.health.outputs.rollback_executed }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+
+      # -----------------------------------------------------------------------
+      # Schritt 1: Deployment-Befehl validieren
+      # -----------------------------------------------------------------------
+      - name: Deployment-Befehl validieren
+        env:
+          GATE_COMMAND: ${{ inputs.deploy_command }}
+          GATE_ALLOWED_COMMAND_PREFIXES: ${{ inputs.allowed_command_prefixes }}
+        run: python3 scripts/gate_command_report.py
+
+      # -----------------------------------------------------------------------
+      # Schritt 2: Deployment ausfuehren
+      # -----------------------------------------------------------------------
+      - name: Deployment ausfuehren
+        env:
+          GATE_DEPLOY_CMD: ${{ inputs.deploy_command }}
+        run: eval "$GATE_DEPLOY_CMD"
+
+      # -----------------------------------------------------------------------
+      # Schritt 3: Health-Check mit Wiederholung und optionalem Rollback
+      # -----------------------------------------------------------------------
+      - name: Health-Check ausfuehren
+        id: health
+        env:
+          GATE_HEALTH_URL: ${{ inputs.health_check_url }}
+          GATE_EXPECTED_STATUS: ${{ inputs.expected_status }}
+          GATE_EXPECTED_TEXT: ${{ inputs.expected_text }}
+          GATE_RETRIES: ${{ inputs.retries }}
+          GATE_RETRY_DELAY_SECONDS: ${{ inputs.retry_delay_seconds }}
+          GATE_ROLLBACK_COMMAND: ${{ inputs.rollback_command }}
+        run: python3 scripts/gate_health_check.py
