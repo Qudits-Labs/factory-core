@@ -1,0 +1,11 @@
+## Kontext
+
+Als Nutzer will ich etwas sehen.
+
+## Ziel
+
+Etwas angezeigt bekommen.
+
+## Akzeptanzkriterien
+
+Keine Checkbox, kein Nutzenmarker.

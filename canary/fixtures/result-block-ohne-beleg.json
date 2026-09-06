@@ -1,0 +1,19 @@
+{
+  "schema_version": "1.0",
+  "role": "adversary",
+  "attempt": 1,
+  "run_id": "canary-run-003",
+  "commit_sha": null,
+  "timestamp_utc": "2026-01-15T10:00:00Z",
+  "status": "failed",
+  "verdict": "FAIL",
+  "artefakte": [],
+  "findings": [
+    {
+      "id": "F-001",
+      "severity": "BLOCK",
+      "title": "Befund ohne Beleg — fehlt spec_ref, location, reproduction"
+    }
+  ],
+  "begruendung": "BLOCK ohne Belege — vom Schema abzulehnen."
+}

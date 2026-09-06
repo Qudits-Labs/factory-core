@@ -1,0 +1,22 @@
+[
+  {
+    "criterion_id": "AK-01",
+    "tc_ids": [
+      "TC-001",
+      "TC-002"
+    ],
+    "condition": "Export-Schaltfläche erscheint in der Ergebnisliste",
+    "test_files": [
+      "tests/test_export.py"
+    ],
+    "manual": false
+  },
+  {
+    "criterion_id": "AK-02",
+    "tc_ids": [
+      "TC-003"
+    ],
+    "condition": "Dateiname enthält Datum und Filterbezeichnung",
+    "manual": false
+  }
+]

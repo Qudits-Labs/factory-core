@@ -1,0 +1,2 @@
+src/modul.py
+docs/architektur.md

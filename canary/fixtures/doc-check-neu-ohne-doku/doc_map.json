@@ -1,0 +1,11 @@
+[
+  {
+    "paths": [
+      "src/*.py"
+    ],
+    "docs": [
+      "docs/api.md"
+    ],
+    "entity_pattern": "def ([a-z_][a-z0-9_]*)\\("
+  }
+]

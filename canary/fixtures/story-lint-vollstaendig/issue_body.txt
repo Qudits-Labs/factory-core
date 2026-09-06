@@ -1,0 +1,16 @@
+## Kontext
+
+Als Systemadministratorin brauche ich eine Übersicht der laufenden Jobs,
+weil ich sonst bei Störungen lange suchen muss.
+
+## Ziel
+
+Eine nach Status filterbare Liste aller laufenden Hintergrundprozesse anzeigen.
+
+## Akzeptanzkriterien
+
+- [x] Liste erscheint beim Öffnen der Verwaltungsseite
+- [ ] Filter nach Status (aktiv, wartend, fehlgeschlagen) funktioniert
+- [ ] Jeder Eintrag zeigt Startzeit und Dauer
+
+<!-- nutzen: Reduziert Diagnosezeit bei Störungen auf unter zwei Minuten -->

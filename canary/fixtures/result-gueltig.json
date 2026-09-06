@@ -1,0 +1,35 @@
+{
+  "schema_version": "1.0",
+  "role": "adversary",
+  "attempt": 1,
+  "run_id": "canary-run-001",
+  "commit_sha": null,
+  "timestamp_utc": "2026-01-15T10:00:00Z",
+  "status": "failed",
+  "verdict": "FAIL",
+  "artefakte": [
+    {
+      "typ": "spec",
+      "pfad": "docs/specs/SPEC-001.md"
+    }
+  ],
+  "findings": [
+    {
+      "id": "F-001",
+      "severity": "BLOCK",
+      "title": "Akzeptanzkriterium ohne messbare Bedingung",
+      "spec_ref": {
+        "document": "docs/specs/SPEC-001.md",
+        "section": "Akzeptanzkriterien",
+        "criterion_id": "AK-03"
+      },
+      "location": {
+        "file": null,
+        "line": null,
+        "note": "Betrifft das Dokument"
+      },
+      "reproduction": "Das Kriterium nennt keinen Schwellwert. Ohne zusätzliche Annahme ist kein Testfall formulierbar, der die Bedingung prüft."
+    }
+  ],
+  "begruendung": "Ein Kriterium ohne messbare Bedingung verhindert die Abnahme."
+}

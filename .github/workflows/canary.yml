@@ -1,0 +1,33 @@
+name: Canary-Selbsttest
+
+# Prueft den Kern gegen sich selbst: Schemas, Gate-Skripte und Workflow-Vertrag.
+#
+# Kein `pull_request_target`. Fremde Actions auf Commit-SHA gepinnt.
+# Keine Secrets nötig -- der Kern hat keine Laufzeit und keinen Dienst.
+#
+# SHA-Referenzen entsprechen denen des bestehenden self-check.yml:
+#   actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  (v5)
+#   actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 (v6)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  canary:
+    name: Canary-Selbsttest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      - name: Abhaengigkeiten installieren
+        run: pip install --quiet pyyaml jsonschema referencing
+      - name: Canary ausfuehren
+        run: python3 canary/run_canary.py
