@@ -34,7 +34,14 @@ except ImportError:  # pragma: no cover
 
 ENDUNGEN = {".yml", ".yaml"}
 ERLAUBT_IMMER = {"GITHUB_TOKEN"}
-SECRET_MUSTER = re.compile(r"secrets\.([A-Za-z_][A-Za-z0-9_]*)")
+
+# Ein Secret wirkt nur innerhalb eines GitHub-Ausdrucks. Die Suche laeuft
+# deshalb zweistufig: erst die Ausdruecke herausloesen, dann darin nach dem
+# Zugriff suchen. Eine Suche allein nach `secrets.` im ganzen Text trifft auch
+# Dateinamen und Fliesstext -- dieser Falschtreffer hat den ersten CI-Lauf
+# scheitern lassen, an einem Skript, das `check_no_secrets.py` heisst.
+AUSDRUCK_MUSTER = re.compile(r"\$\{\{(.*?)\}\}", re.DOTALL)
+SECRET_MUSTER = re.compile(r"\bsecrets\.([A-Za-z_][A-Za-z0-9_-]*)")
 
 
 def workflow_dateien(pfade: list[str]) -> list[Path]:
@@ -90,7 +97,9 @@ def main(argv: list[str]) -> int:
 
         block = on_block(inhalt)
         erlaubt = ERLAUBT_IMMER | deklarierte_secrets(block)
-        verwendet = set(SECRET_MUSTER.findall(roh))
+        verwendet: set[str] = set()
+        for ausdruck in AUSDRUCK_MUSTER.findall(roh):
+            verwendet.update(SECRET_MUSTER.findall(ausdruck))
         for name in sorted(verwendet - erlaubt):
             funde.append(
                 f"{datei}: verwendet `secrets.{name}`, ohne es im "

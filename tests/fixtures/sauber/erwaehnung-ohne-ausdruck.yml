@@ -1,0 +1,21 @@
+# Fixture, kein aktiver Workflow.
+#
+# Gegenprobe zu einem Falschtreffer, der einen echten CI-Lauf hat scheitern
+# lassen: das Wort `secrets.` steht hier mehrfach im Klartext, in einem
+# Kommentar und in einem Dateinamen wie scripts/check_no_secrets.py. Wirksam
+# ist ein Secret aber nur innerhalb eines GitHub-Ausdrucks. Diese Datei darf
+# deshalb keinen Verstoss ausloesen.
+name: sauber-erwaehnung-ohne-ausdruck
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  pruefen:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ueber Secrets reden, ohne eines zu verwenden
+        run: |
+          echo "Dieses Repositorium haelt keine secrets.WERTE."
+          echo "Geprueft wird das von scripts/check_no_secrets.py."
