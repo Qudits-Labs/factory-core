@@ -1,0 +1,29 @@
+# Fixture, kein aktiver Workflow.
+#
+# Ein wiederverwendbarer Workflow wird als Step aufgerufen und der Step
+# fuehrt einen 'secrets:'-Schluessel. Beides ist falsch:
+#
+# 1. uses: ./.github/workflows/... gehoert auf Job-Ebene, nicht in steps:.
+# 2. 'secrets:' ist kein gueltiger Step-Schluessel.
+#
+# Diese Defektkombination trat auf, als gate-code-review.yml, gate-spec-review.yml
+# und transition.yml run-agent.yml noch als Step statt als Job einbanden.
+# GitHub laedt die Workflow-Datei in diesem Fall gar nicht.
+name: verstoss-reusable-als-step
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  ausfuehren:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Aufruf vorbereiten
+        run: echo "Vorbereitung"
+      - name: Agentenlauf starten
+        uses: ./.github/workflows/run-agent.yml
+        with:
+          role: implementer
+        secrets:
+          agent_token: wird-vom-aufrufenden-job-gesetzt

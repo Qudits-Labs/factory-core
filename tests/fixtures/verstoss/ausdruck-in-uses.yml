@@ -1,0 +1,31 @@
+# Fixture, kein aktiver Workflow.
+#
+# Ein Ausdruck in uses: eines Steps — GitHub wertet dort keine Ausdrücke
+# aus und laedt die Datei deshalb nicht. Die Strukturpruefung muss
+# anschlagen.
+#
+# Dieser Defekt trat in der Praxis auf, als run-agent.yml einen variablen
+# action_sha-Input an die claude-code-action weitergab:
+#   uses: some-owner/some-action@${{ inputs.action_sha }}
+#
+# GitHub ignoriert solche Dateien stillschweigend.
+name: verstoss-ausdruck-in-uses
+on:
+  workflow_call:
+    inputs:
+      action_sha:
+        description: "Commit-SHA der Action — darf nicht in uses: eingesetzt werden"
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  laufen:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Vorbereitung
+        run: echo "Checkout-Ersatz"
+      - name: Aktion starten
+        uses: some-owner/some-action@${{ inputs.action_sha }}
+        with:
+          parameter: wert

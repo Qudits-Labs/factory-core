@@ -472,6 +472,56 @@ def pruefe_workflow_call_vertrag() -> None:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# 9. Workflow-Struktur
+#    Kein uses: mit Ausdruck, kein Reusable-Workflow als Step, kein secrets:
+#    im Step, korrekte Job-Struktur (uses: schließt steps:/runs-on: aus).
+#    Läuft gegen tests/fixtures/sauber/ und tests/fixtures/verstoss/.
+# ─────────────────────────────────────────────────────────────────────────────
+def pruefe_workflow_struktur() -> None:
+    skript = SCRIPTS / "check_workflow_struktur.py"
+    if not skript.exists():
+        _uebersprungen_("workflow-struktur", f"{skript.name} fehlt")
+        return
+
+    sauber_vz = WURZEL / "tests" / "fixtures" / "sauber"
+    verstoss_vz = WURZEL / "tests" / "fixtures" / "verstoss"
+
+    # Sauber-Fall: Exit 0 erwartet
+    if not sauber_vz.is_dir():
+        _uebersprungen_("workflow-struktur/sauber", "Fixture-Verzeichnis fehlt")
+    else:
+        lauf = _lauf(skript, str(sauber_vz))
+        if lauf.returncode == 0:
+            _ok_(
+                "workflow-struktur/sauber — keine Strukturdefekte in "
+                "sauberen Fixtures"
+            )
+        else:
+            _fehler_(
+                "workflow-struktur/sauber",
+                f"Exit {lauf.returncode} statt 0. "
+                + (lauf.stderr.strip()[:200] or lauf.stdout.strip()[:200]),
+            )
+
+    # Verstoss-Fall: Exit 1 erwartet
+    if not verstoss_vz.is_dir():
+        _uebersprungen_("workflow-struktur/verstoss", "Fixture-Verzeichnis fehlt")
+    else:
+        lauf = _lauf(skript, str(verstoss_vz))
+        if lauf.returncode == 1:
+            _ok_(
+                "workflow-struktur/verstoss — Strukturdefekte in "
+                "Verstoss-Fixtures erkannt"
+            )
+        else:
+            _fehler_(
+                "workflow-struktur/verstoss",
+                f"Exit {lauf.returncode} statt 1. "
+                + (lauf.stderr.strip()[:200] or lauf.stdout.strip()[:200]),
+            )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Hauptprogramm
 # ─────────────────────────────────────────────────────────────────────────────
 def main() -> int:
@@ -508,6 +558,10 @@ def main() -> int:
 
     print("Schritt 8: Workflow-Call-Vertrag (gate-*.yml)")
     pruefe_workflow_call_vertrag()
+    print()
+
+    print("Schritt 9: Workflow-Struktur (check_workflow_struktur.py)")
+    pruefe_workflow_struktur()
     print()
 
     gesamt = len(_ok) + len(_fehler) + len(_uebersprungen)
