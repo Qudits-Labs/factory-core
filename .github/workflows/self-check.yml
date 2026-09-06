@@ -1,0 +1,56 @@
+name: Selbstpruefung
+
+# Dieses Repository ist oeffentlich. `pull_request` fuehrt einen Fremdbeitrag im
+# Kontext des Forks aus, ohne Schreibtoken und ohne Secrets. `pull_request_target`
+# wuerde das Gegenteil tun; der Job `ausloeser` weist ihn zurueck.
+#
+# Fremde Actions sind auf einen Commit-SHA gepinnt. Ein Tag laesst sich
+# verschieben, ein SHA nicht.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ausloeser:
+    name: Verbotene Workflow-Ausloeser
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      - name: PyYAML installieren
+        run: pip install --quiet pyyaml
+      - name: Ausloeser pruefen
+        run: python3 scripts/check_workflow_triggers.py .github/workflows
+
+  secrets:
+    name: Keine offene Secret-Referenz
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      - name: PyYAML installieren
+        run: pip install --quiet pyyaml
+      - name: Secret-Referenzen pruefen
+        run: python3 scripts/check_no_secrets.py .github/workflows
+
+  eigenpruefung:
+    name: Pruefskripte gegen Fixtures
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      - name: Abhaengigkeiten installieren
+        run: pip install --quiet pyyaml
+      - name: Fixtures pruefen
+        run: python3 scripts/selftest.py

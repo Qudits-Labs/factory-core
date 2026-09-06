@@ -1,0 +1,26 @@
+# Dieses Repository haelt keine Secrets und keine Laufzeitartefakte.
+# Die Eintraege hier sind Unfallschutz, keine Ablageregel.
+
+# Umgebungsdateien, in welcher Schreibweise auch immer
+.env
+.env.*
+*.env
+!.env.example
+
+# Schluessel und Zertifikate
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+
+# Werkzeuge und Betriebssystem
+node_modules/
+.DS_Store
+*.log

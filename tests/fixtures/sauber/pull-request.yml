@@ -1,0 +1,13 @@
+# Fixture, kein aktiver Workflow. Liegt bewusst ausserhalb von
+# .github/workflows, damit GitHub sie nicht ausfuehrt.
+name: sauber-pull-request
+on:
+  pull_request:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  pruefen:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "ohne Secret, ohne verbotenen Ausloeser"

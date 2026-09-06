@@ -1,0 +1,14 @@
+# Fixture, kein aktiver Workflow. Sie enthaelt absichtlich den verbotenen
+# Ausloeser, damit die Pruefung nachweislich anschlaegt. Liegt ausserhalb von
+# .github/workflows und wird von GitHub nicht ausgefuehrt.
+name: verstoss-pull-request-target
+on:
+  pull_request_target:
+    types: [opened, synchronize]
+permissions:
+  contents: write
+jobs:
+  gefaehrlich:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "wuerde fremden Code mit eigenen Rechten ausfuehren"

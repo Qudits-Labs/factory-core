@@ -1,0 +1,12 @@
+# Fixture, kein aktiver Workflow.
+# Zweite Schreibweise des `on`-Blocks: eine Liste statt einer Zuordnung. Die
+# Pruefung muss beide erkennen.
+name: verstoss-ausloeser-liste
+on: [push, pull_request_target]
+permissions:
+  contents: read
+jobs:
+  gefaehrlich:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "verbotener Ausloeser in Listenform"
