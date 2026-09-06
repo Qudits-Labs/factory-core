@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Qudits-Labs/factory-core/main/schemas/finding.schema.json",
+  "title": "Befund",
+  "description": "Ein einzelner Befund aus einem prüfenden Lauf. Ein Befund mit dem Schweregrad BLOCK hält einen Übergang auf, deshalb muss er belegt sein: verletzte Stelle, Fundstelle, Reproduktion. Fehlt einer der drei Belege, wird der Befund auf WARN herabgestuft und blockiert nicht mehr. Das ist keine Nachsicht, sondern die Bedingung dafür, dass ein Veto Gewicht behält.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "severity", "title"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^F-[0-9]{3,}$",
+      "description": "Laufende Kennung innerhalb eines Laufs, etwa F-001."
+    },
+    "severity": {
+      "enum": ["BLOCK", "WARN", "INFO"],
+      "description": "BLOCK hält den Übergang auf, WARN bleibt sichtbar und lässt durch, INFO erscheint nur in der Ergebnisdatei."
+    },
+    "title": {
+      "type": "string",
+      "minLength": 5,
+      "maxLength": 200,
+      "description": "Ein Satz, der den Befund benennt."
+    },
+    "spec_ref": {
+      "type": "object",
+      "description": "Die Stelle, gegen die der Befund verstösst. Bei BLOCK Pflicht.",
+      "additionalProperties": false,
+      "properties": {
+        "document": {
+          "type": "string",
+          "description": "Pfad des Dokuments im Repositorium."
+        },
+        "section": {
+          "type": "string",
+          "description": "Abschnitt innerhalb des Dokuments."
+        },
+        "criterion_id": {
+          "type": ["string", "null"],
+          "description": "Kennung des Akzeptanzkriteriums oder der nichtfunktionalen Anforderung."
+        }
+      },
+      "required": ["document"]
+    },
+    "location": {
+      "type": "object",
+      "description": "Die Fundstelle. Bei BLOCK Pflicht. Datei und Zeile dürfen leer sein, wenn `note` erklärt, warum es keine gibt, etwa bei der Prüfung eines Dokuments.",
+      "additionalProperties": false,
+      "properties": {
+        "file": { "type": ["string", "null"] },
+        "line": { "type": ["integer", "null"], "minimum": 1 },
+        "note": { "type": ["string", "null"] }
+      }
+    },
+    "reproduction": {
+      "type": "string",
+      "minLength": 20,
+      "description": "Ein fehlschlagender Testfall, ein Ausführungsweg mit Eingabe und beobachtetem Ergebnis, oder eine Schrittfolge, die jemand ohne weiteren Kontext nachvollziehen kann. Bei BLOCK Pflicht."
+    },
+    "downgraded_from": {
+      "enum": ["BLOCK"],
+      "description": "Gesetzt, wenn ein Befund wegen fehlender Belege von BLOCK auf WARN herabgestuft wurde. Der Vorgang bleibt damit nachvollziehbar."
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "severity": { "const": "BLOCK" } },
+        "required": ["severity"]
+      },
+      "then": {
+        "required": ["spec_ref", "location", "reproduction"]
+      }
+    }
+  ]
+}

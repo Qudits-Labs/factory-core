@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Qudits-Labs/factory-core/main/schemas/test-report.schema.json",
+  "title": "Testbericht",
+  "description": "Ergebnis eines Testlaufs, erzeugt vom Befehls-Workflow. Der Bericht wird als Artefakt abgelegt und als Kommentar am Pull Request zusammengefasst, damit er auch nach Ablauf der Artefakt-Aufbewahrung im Verlauf sichtbar bleibt. Er ist unveränderlich: ein zweiter Lauf erzeugt einen zweiten Bericht, er überschreibt den ersten nicht.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["run_id", "timestamp_utc", "pass", "exit_code"],
+  "properties": {
+    "run_id": { "type": "string", "minLength": 1 },
+    "commit_sha": {
+      "type": ["string", "null"],
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "timestamp_utc": { "type": "string", "format": "date-time" },
+    "pass": {
+      "type": "boolean",
+      "description": "Wahr genau dann, wenn der Befehl mit Code 0 endete und keine erwartete Testkennung fehlt."
+    },
+    "exit_code": { "type": "integer" },
+    "command": {
+      "type": "string",
+      "description": "Der ausgeführte Befehl, wie ihn das aufrufende Repositorium übergeben hat."
+    },
+    "duration_seconds": { "type": "number", "minimum": 0 },
+    "tc_ids_found": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Testkennungen, die in der Ausgabe des Laufs auftauchten."
+    },
+    "tc_ids_missing": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Kennungen, die erwartet wurden und in der Ausgabe fehlen. Das ist kein Testfehler, sondern ein Hinweis auf einen Fall, der nicht ausgeführt wurde."
+    },
+    "summary": {
+      "type": "string",
+      "maxLength": 2000,
+      "description": "Kurzfassung für den Kommentar am Pull Request."
+    },
+    "output_tail": {
+      "type": "string",
+      "maxLength": 5000,
+      "description": "Letzter Teil der Ausgabe, gekürzt. Dient der Fehlersuche, nicht der Bewertung."
+    }
+  }
+}

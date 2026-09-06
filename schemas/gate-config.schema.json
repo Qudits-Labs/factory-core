@@ -1,0 +1,212 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Qudits-Labs/factory-core/main/schemas/gate-config.schema.json",
+  "title": "Konfiguration der Prüfschritte",
+  "description": "Diese Datei liegt im Produktrepositorium unter `.factory/gate-config.yml`, nicht hier. Der Kern legt nur ihren Aufbau fest. Sie enthält alles, was ohne Kenntnis des Produkts nicht zu beantworten ist: Befehle, Schwellwerte, Umgebungen, Pfadklassen. Der aufrufende Workflow liest sie und übergibt die Werte als Eingaben an die Prüfschritte des Kerns; ein Prüfschritt liest sie nie selbst.\n\nWas hier ausdrücklich NICHT hineingehört: die Kontokennungen der Menschen mit Freigaberecht. Sie stehen als Repository-Variable in den Einstellungen des Produktrepositoriums, damit kein Name in einer versionierten Datei hängt. Ebenso wenig gehören hier Secrets, Token oder Verbindungszeichenfolgen hinein.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["profile", "gates"],
+  "properties": {
+    "profile": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Name des Konformitätsprofils. Der Kern gibt die Struktur vor, nicht die Namen; welche Profile es gibt und was sie verlangen, entscheidet das Produktrepositorium."
+    },
+    "core_ref": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$",
+      "description": "Commit-SHA des Kerns, den dieses Repositorium einbindet. Er steht hier zur Nachvollziehbarkeit; verbindlich ist der SHA in den `uses:`-Zeilen der Workflows."
+    },
+    "agent_action_sha": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$",
+      "description": "Commit-SHA der Action, die den Agentenlauf ausführt. Ein Tag wäre verschiebbar."
+    },
+    "allowed_bots": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Kennungen der Anwendungen, deren Ereignisse einen Agentenlauf auslösen dürfen. Ohne diese Liste läuft eine Kette, in der ein Agent den nächsten anstösst, gar nicht; mit einer zu weiten Liste läuft sie im Kreis."
+    },
+    "max_attempts": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 3,
+      "description": "Versuche je Story und Rolle, bevor der Vorgang angehalten wird."
+    },
+    "gates": {
+      "type": "object",
+      "description": "Konfiguration je Prüfschritt. Ein Schritt, der hier fehlt, wird vom aufrufenden Workflow nicht aufgerufen.",
+      "additionalProperties": false,
+      "properties": {
+        "story-lint": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "required_label_prefixes": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Präfixe, von denen je mindestens ein Label vorhanden sein muss."
+            },
+            "nutzen_marker_required": { "type": "boolean", "default": true }
+          }
+        },
+        "adr-check": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "required_sections": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "min_alternatives": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "spec-review": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "max_turns": { "type": "integer", "minimum": 1 },
+            "prompt_extension_path": { "type": "string" }
+          }
+        },
+        "test-coverage": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "ac_map_file": { "type": "string" },
+            "run_adversarial": { "type": "boolean", "default": true },
+            "max_turns": { "type": "integer", "minimum": 1 },
+            "prompt_extension_path": { "type": "string" }
+          }
+        },
+        "typecheck": { "$ref": "#/$defs/befehl" },
+        "tests": { "$ref": "#/$defs/befehl" },
+        "test-integrity": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "protected_paths": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Glob-Muster, die zwischen Baseline und Kopf unverändert bleiben müssen."
+            }
+          }
+        },
+        "code-review": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "max_turns": { "type": "integer", "minimum": 1 },
+            "second_review": { "type": "boolean", "default": false },
+            "prompt_extension_path": { "type": "string" }
+          }
+        },
+        "doc-check": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "doc_map_file": { "type": "string" },
+            "run_adversarial": { "type": "boolean", "default": true },
+            "prompt_extension_path": { "type": "string" }
+          }
+        },
+        "deploy": {
+          "type": "object",
+          "description": "Je Umgebung ein Eintrag. Welche Umgebungen es gibt, entscheidet das Produktrepositorium; der Kern kennt keine.",
+          "minProperties": 1,
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["deploy_command", "health_check_url"],
+            "properties": {
+              "deploy_command": { "type": "string", "minLength": 1 },
+              "allowed_command_prefixes": {
+                "type": "array",
+                "items": { "type": "string" }
+              },
+              "health_check_url": { "type": "string" },
+              "expected_status": { "type": "integer", "default": 200 },
+              "expected_text": { "type": "string" },
+              "smoke_tests": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["url"],
+                  "properties": {
+                    "url": { "type": "string" },
+                    "expected_status": { "type": "integer" },
+                    "expected_text": { "type": "string" }
+                  }
+                }
+              },
+              "rollback_command": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "roles": {
+      "type": "object",
+      "description": "Zuordnung von Statuslabel zu Rollenname. Die rechte Seite ist ausschliesslich ein Rollenname des Kerns, nie ein Dateipfad. Ein Label, das einen freien Workflow-Pfad benennen könnte, wäre ein Weg, die Kette über eine Konfigurationsdatei auf einen fremden Workflow umzulenken.",
+      "additionalProperties": {
+        "enum": [
+          "intake-coordinator",
+          "solution-architect",
+          "test-designer",
+          "implementer",
+          "adversary",
+          "deployer"
+        ]
+      }
+    }
+  },
+  "$defs": {
+    "befehl": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["command"],
+      "properties": {
+        "command": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Der auszuführende Befehl. Er wird über eine Umgebungsvariable in den Schritt gereicht, nie in eine Kommandozeile eingesetzt."
+        },
+        "allowed_command_prefixes": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Zulässige Anfänge des Befehls. Fehlt die Liste, läuft der Befehl ohne Beschränkung, und der Prüfschritt sagt das sichtbar. Die eigentliche Absicherung ist der Schreibschutz auf dieser Datei."
+        },
+        "working_directory": { "type": "string", "default": "." },
+        "setup": {
+          "enum": ["node", "python", "none"],
+          "default": "none",
+          "description": "Welche Laufzeitumgebung vor dem Befehl eingerichtet wird."
+        },
+        "runtime_version": { "type": "string" },
+        "tc_id_pattern": {
+          "type": "string",
+          "description": "Regulärer Ausdruck, mit dem Testkennungen aus der Ausgabe gelesen werden."
+        },
+        "services": {
+          "type": "array",
+          "description": "Dienste, die neben dem Befehl laufen sollen, etwa eine Datenbank. Wird nur ausgeführt, wenn `allowed_service_images` gesetzt ist und jedes Abbild darauf passt.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["image"],
+            "properties": {
+              "image": { "type": "string" },
+              "env": { "type": "object", "additionalProperties": { "type": "string" } },
+              "ports": { "type": "array", "items": { "type": "string" } }
+            }
+          }
+        },
+        "allowed_service_images": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    }
+  }
+}

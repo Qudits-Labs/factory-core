@@ -1,0 +1,149 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Qudits-Labs/factory-core/main/schemas/result.schema.json",
+  "title": "Ergebnis eines Agentenlaufs",
+  "description": "Ein Agentenlauf legt sein Ergebnis unter `.factory/result.json` des Produktrepositoriums ab. Die Datei ist für die Maschine, der Klartext für Menschen steht im Issue. Der Übergabe-Workflow liest sie, prüft die Behauptung gegen den tatsächlichen Zustand und entscheidet danach. Ein Ergebnis, das die Prüfung nicht besteht, ändert nichts am Zustand, zählt aber als Versuch.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "role",
+    "attempt",
+    "run_id",
+    "timestamp_utc",
+    "status",
+    "artefakte",
+    "findings",
+    "begruendung"
+  ],
+  "properties": {
+    "$schema": { "type": "string" },
+    "schema_version": {
+      "const": "1.0",
+      "description": "Version dieses Schemas. Eine Änderung der Version ist eine Änderung des Vertrags und braucht einen eigenen Commit im Kern."
+    },
+    "role": {
+      "enum": [
+        "intake-coordinator",
+        "solution-architect",
+        "test-designer",
+        "implementer",
+        "adversary",
+        "deployer"
+      ],
+      "description": "Die Rolle, die den Lauf ausgeführt hat."
+    },
+    "attempt": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Nummer des Versuchs. Sie wird vom Übergabe-Workflow vor dem Lauf gesetzt, nicht vom Agenten. Ein Agent, der seinen eigenen Zähler schreibt, hat keinen."
+    },
+    "run_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Kennung des Laufs in der Ausführungsumgebung."
+    },
+    "commit_sha": {
+      "type": ["string", "null"],
+      "pattern": "^[0-9a-f]{40}$",
+      "description": "Commit, den der Lauf erzeugt hat. Null, wenn er keinen erzeugt hat, etwa bei einer reinen Prüfung."
+    },
+    "timestamp_utc": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Zeitpunkt in UTC, nach ISO 8601."
+    },
+    "status": {
+      "enum": ["success", "partial", "failed", "blocked"],
+      "description": "Wie der Lauf geendet hat. `partial` heisst, dass ein Teil des Lieferobjekts entstanden ist; `blocked` heisst, dass der Lauf ohne einen Entscheid von aussen nicht weitergeht."
+    },
+    "verdict": {
+      "type": ["string", "null"],
+      "enum": ["PASS", "FAIL", "APPROVE", "REQUEST_CHANGES", null],
+      "description": "Nur prüfende Rollen fällen ein Urteil. Bei den übrigen steht hier null."
+    },
+    "artefakte": {
+      "type": "array",
+      "description": "Was der Lauf erzeugt oder verändert hat. Leer ist zulässig.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["typ", "pfad"],
+        "properties": {
+          "typ": {
+            "enum": [
+              "spec",
+              "adr",
+              "test",
+              "code",
+              "review",
+              "release-note",
+              "deploy",
+              "doc"
+            ]
+          },
+          "pfad": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Pfad im Repositorium, relativ zur Wurzel."
+          },
+          "commit": {
+            "type": ["string", "null"],
+            "pattern": "^[0-9a-f]{40}$"
+          }
+        }
+      }
+    },
+    "findings": {
+      "type": "array",
+      "description": "Befunde des Laufs. Aufbau je Eintrag siehe finding.schema.json.",
+      "items": { "$ref": "finding.schema.json" }
+    },
+    "begruendung": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2000,
+      "description": "Klartext in wenigen Sätzen: was der Lauf getan hat und warum das Urteil so ausfällt."
+    },
+    "metrics": {
+      "type": "object",
+      "description": "Laufzeitdaten für die Auswertung. Freiwillig, aber nützlich.",
+      "additionalProperties": false,
+      "properties": {
+        "turns_used": { "type": "integer", "minimum": 0 },
+        "duration_seconds": { "type": "number", "minimum": 0 }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "$comment": "Ein zustimmendes Urteil verträgt keinen blockierenden Befund. Ein Ergebnis, das beides behauptet, ist widersprüchlich und wird abgelehnt.",
+      "if": {
+        "properties": { "verdict": { "enum": ["PASS", "APPROVE"] } },
+        "required": ["verdict"]
+      },
+      "then": {
+        "properties": {
+          "findings": {
+            "type": "array",
+            "items": {
+              "properties": { "severity": { "enum": ["WARN", "INFO"] } }
+            }
+          }
+        }
+      }
+    },
+    {
+      "$comment": "Wer ein Urteil fällt, muss eine prüfende Rolle sein.",
+      "if": {
+        "properties": { "verdict": { "type": "string" } },
+        "required": ["verdict"]
+      },
+      "then": {
+        "properties": {
+          "role": { "enum": ["adversary", "intake-coordinator"] }
+        }
+      }
+    }
+  ]
+}
