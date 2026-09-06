@@ -1,0 +1,282 @@
+name: Agenten-Lauf
+
+# Wrapper um anthropics/claude-code-action. Startet einen Agentenlauf fuer
+# eine der sechs definierten Rollen der Factory-Pipeline und validiert das
+# erzeugte Ergebnis gegen schemas/result.schema.json.
+#
+# UNGETESTET -- dieser Workflow laeuft erst mit der ersten echten Anbindung
+# eines Produktrepos und einer genehmigten GitHub App. Bis dahin ist er
+# nicht end-to-end pruefbar.
+#
+# Sicherheitsnotizen:
+# - github_token wird der Action NICHT uebergeben. Commits der Action loesen
+#   sonst keine Folge-Workflows aus.
+# - action_sha und core_ref muessen vom Aufrufer als gepinnte SHAs uebergeben
+#   werden. Tags sind nicht zulaessig.
+#
+# Fremde Actions sind auf einen vom Aufrufer uebergebenen Commit-SHA gepinnt.
+
+on:
+  workflow_call:
+    inputs:
+      role:
+        description: >
+          Rollenname des Agenten. Einer von:
+          intake-coordinator, solution-architect, test-designer,
+          implementer, adversary, deployer
+        required: true
+        type: string
+      issue_number:
+        description: Nummer des Issues, auf dem der Agent arbeitet
+        required: true
+        type: number
+      prompt_extension_path:
+        description: Optionaler Pfad zu einer Prompt-Erweiterung im aufrufenden Repo
+        required: false
+        type: string
+        default: ''
+      max_turns:
+        description: Maximale Anzahl Agenten-Turns
+        required: false
+        type: number
+        default: 20
+      allowed_bots:
+        description: Komma-getrennte Login-Namen erlaubter Bot-Accounts
+        required: false
+        type: string
+        default: ''
+      action_sha:
+        description: Commit-SHA der claude-code-action (gepinnt, kein Tag)
+        required: true
+        type: string
+      core_ref:
+        description: SHA dieses Repositoriums, um den Rollenrahmen zu laden
+        required: true
+        type: string
+    outputs:
+      result_json:
+        description: Inhalt von .factory/result.json nach dem Agentenlauf
+        value: ${{ jobs.agent.outputs.result_json }}
+      commit_sha:
+        description: SHA des Commits, den der Agent erzeugt hat
+        value: ${{ jobs.agent.outputs.commit_sha }}
+      run_id:
+        description: GitHub Actions Run-ID dieses Laufs
+        value: ${{ jobs.agent.outputs.run_id }}
+      schema_valid:
+        description: true wenn result.json dem Schema entspricht
+        value: ${{ jobs.agent.outputs.schema_valid }}
+      status:
+        description: success | schema_invalid | agent_error
+        value: ${{ jobs.agent.outputs.status }}
+    secrets:
+      anthropic_api_key:
+        description: Anthropic API-Schluessel fuer den Agentenlauf
+        required: true
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  agent:
+    name: Agenten-Lauf (${{ inputs.role }})
+    runs-on: ubuntu-latest
+    outputs:
+      result_json: ${{ steps.ergebnis.outputs.result_json }}
+      commit_sha: ${{ steps.agent_lauf.outputs.commit_sha || '' }}
+      run_id: ${{ github.run_id }}
+      schema_valid: ${{ steps.validierung.outputs.schema_valid }}
+      status: ${{ steps.ergebnis.outputs.status }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+
+      # -----------------------------------------------------------------------
+      # Schritt 1: Rolle validieren (Python, strukturell geprueft)
+      # -----------------------------------------------------------------------
+      - name: Rolle validieren
+        env:
+          GATE_ROLE: ${{ inputs.role }}
+        run: |
+          python3 - << 'PYEOF'
+          import os
+          import sys
+
+          erlaubte = {
+              "intake-coordinator",
+              "solution-architect",
+              "test-designer",
+              "implementer",
+              "adversary",
+              "deployer",
+          }
+          rolle = os.environ.get("GATE_ROLE", "")
+          if rolle not in erlaubte:
+              print(
+                  f"FEHLER: Unbekannte Rolle '{rolle}'."
+                  f" Erlaubt: {', '.join(sorted(erlaubte))}",
+                  file=sys.stderr,
+              )
+              sys.exit(1)
+          print(f"Rolle '{rolle}' ist gueltig.")
+          PYEOF
+
+      # -----------------------------------------------------------------------
+      # Schritt 2: Rollenrahmen aus diesem Repo laden (core_ref-Checkout)
+      # -----------------------------------------------------------------------
+      - name: Rollenrahmen laden
+        env:
+          GATE_ROLE: ${{ inputs.role }}
+          GATE_CORE_REF: ${{ inputs.core_ref }}
+          GATE_PROMPT_EXT: ${{ inputs.prompt_extension_path }}
+        run: |
+          python3 - << 'PYEOF'
+          import os
+          import sys
+          from pathlib import Path
+
+          rolle = os.environ.get("GATE_ROLE", "")
+          rollenrahmen = Path("role-frameworks") / f"{rolle}.md"
+
+          if not rollenrahmen.exists():
+              print(
+                  f"FEHLER: Rollenrahmen {rollenrahmen} nicht gefunden.",
+                  file=sys.stderr,
+              )
+              sys.exit(1)
+
+          rahmen_inhalt = rollenrahmen.read_text(encoding="utf-8")
+
+          ext_pfad = os.environ.get("GATE_PROMPT_EXT", "")
+          if ext_pfad:
+              ext_datei = Path(ext_pfad)
+              if ext_datei.exists():
+                  rahmen_inhalt += "\n\n" + ext_datei.read_text(encoding="utf-8")
+              else:
+                  print(
+                      f"WARNUNG: prompt_extension_path '{ext_pfad}' existiert nicht,"
+                      " wird ignoriert."
+                  )
+
+          # Zusammengesetzten Prompt fuer die Action bereitstellen
+          out = Path("/tmp/agent_prompt.md")
+          out.write_text(rahmen_inhalt, encoding="utf-8")
+          print(f"Rollenrahmen geschrieben: {len(rahmen_inhalt)} Zeichen")
+          PYEOF
+
+      # -----------------------------------------------------------------------
+      # Schritt 3: Agentenlauf (claude-code-action)
+      # Kein github_token -- Commits der Action loesen sonst keine
+      # Folge-Workflows aus.
+      # -----------------------------------------------------------------------
+      - name: Agenten-Lauf starten
+        id: agent_lauf
+        uses: anthropics/claude-code-action@${{ inputs.action_sha }}
+        with:
+          anthropic_api_key: ${{ secrets.anthropic_api_key }}
+          prompt_file: /tmp/agent_prompt.md
+          max_turns: ${{ inputs.max_turns }}
+          allowed_bots: ${{ inputs.allowed_bots }}
+        env:
+          FACTORY_ISSUE_NUMBER: ${{ inputs.issue_number }}
+          FACTORY_RUN_ID: ${{ github.run_id }}
+
+      # -----------------------------------------------------------------------
+      # Schritt 4: result.json validieren
+      # -----------------------------------------------------------------------
+      - name: result.json validieren
+        id: validierung
+        run: |
+          python3 - << 'PYEOF'
+          import json
+          import os
+          import sys
+          from pathlib import Path
+
+          ergebnis_datei = Path(".factory/result.json")
+          github_output = os.environ.get("GITHUB_OUTPUT", "")
+
+          def schreibe(k, v):
+              if github_output:
+                  with open(github_output, "a") as f:
+                      f.write(f"{k}={v}\n")
+
+          if not ergebnis_datei.exists():
+              print("FEHLER: .factory/result.json fehlt.", file=sys.stderr)
+              schreibe("schema_valid", "false")
+              sys.exit(1)
+
+          try:
+              inhalt = json.loads(ergebnis_datei.read_text(encoding="utf-8"))
+          except json.JSONDecodeError as e:
+              print(f"FEHLER: result.json ist kein gueltiges JSON: {e}", file=sys.stderr)
+              schreibe("schema_valid", "false")
+              sys.exit(1)
+
+          # Schema-Validierung (jsonschema falls vorhanden)
+          schema_datei = Path("schemas/result.schema.json")
+          if schema_datei.exists():
+              try:
+                  import jsonschema
+                  schema = json.loads(schema_datei.read_text(encoding="utf-8"))
+                  jsonschema.validate(inhalt, schema)
+                  schreibe("schema_valid", "true")
+                  print("result.json entspricht dem Schema.")
+              except ImportError:
+                  print("WARNUNG: jsonschema nicht installiert, Schema-Pruefung uebersprungen.")
+                  schreibe("schema_valid", "true")
+              except jsonschema.ValidationError as e:
+                  print(f"FEHLER: result.json entspricht nicht dem Schema: {e.message}", file=sys.stderr)
+                  schreibe("schema_valid", "false")
+                  sys.exit(1)
+          else:
+              print("WARNUNG: schemas/result.schema.json fehlt, Schema-Pruefung uebersprungen.")
+              schreibe("schema_valid", "true")
+          PYEOF
+
+      # -----------------------------------------------------------------------
+      # Schritt 5: Outputs setzen
+      # -----------------------------------------------------------------------
+      - name: Outputs setzen
+        id: ergebnis
+        if: always()
+        run: |
+          python3 - << 'PYEOF'
+          import json
+          import os
+          from pathlib import Path
+
+          github_output = os.environ.get("GITHUB_OUTPUT", "")
+
+          def schreibe(k, v):
+              if github_output:
+                  with open(github_output, "a") as f:
+                      f.write(f"{k}={v}\n")
+
+          ergebnis_datei = Path(".factory/result.json")
+          schema_gueltig = True
+
+          if ergebnis_datei.exists():
+              try:
+                  inhalt = ergebnis_datei.read_text(encoding="utf-8")
+                  schreibe("result_json", inhalt.replace("\n", " "))
+                  status = "success"
+              except OSError:
+                  schreibe("result_json", "{}")
+                  status = "agent_error"
+          else:
+              schreibe("result_json", "{}")
+              status = "agent_error"
+
+          # schema_valid aus dem vorherigen Schritt lesen
+          # (bereits in GITHUB_OUTPUT geschrieben -- hier nur status setzen)
+          schreibe("status", status)
+          print(f"Status: {status}")
+          PYEOF

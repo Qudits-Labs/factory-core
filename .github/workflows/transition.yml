@@ -1,0 +1,284 @@
+name: Zustandsmaschine -- Uebergang pruefen und ausloesen
+
+# Verwaltet Zustandsuebergaenge in der Factory-Pipeline.
+# Prueft Akteur-Berechtigung, Vorbedingungen und Versuchszaehlung,
+# schreibt einen Attempt-Eintrag ins Issue, startet den Agentenlauf
+# und setzt anschliessend das naechste Label.
+#
+# UNGETESTET -- dieser Workflow laeuft erst mit der ersten echten Anbindung
+# eines Produktrepos und einer genehmigten GitHub App. Bis dahin ist er
+# nicht end-to-end pruefbar.
+#
+# Sicherheitsauflage: role_label_map_json bildet Labels auf Rollennamen ab,
+# nicht auf Workflow-Pfade. Nur die sechs definierten Rollennamen sind als
+# Werte erlaubt. Ein freier Pfad als Wert wuerde die Zustandsmaschine
+# umleitbar machen.
+#
+# Bei unberechtigtem Akteur:
+#   - Label wird zurueckgesetzt
+#   - Kommentar mit Rolle, Zeitpunkt und Run-ID wird ins Issue geschrieben
+#   - Label flag:unauthorized-transition wird gesetzt
+#
+# Fremde Actions sind auf einen Commit-SHA gepinnt.
+
+on:
+  workflow_call:
+    inputs:
+      issue_number:
+        description: Nummer des Issues, das den Uebergang ausloest
+        required: true
+        type: number
+      new_label:
+        description: Ziel-Label des Uebergangs
+        required: true
+        type: string
+      actor_login:
+        description: GitHub-Login des ausloesenden Akteurs
+        required: true
+        type: string
+      human_gate_logins:
+        description: Komma-getrennte Logins fuer menschliche Eingriffe
+        required: true
+        type: string
+      transition_identity_login:
+        description: Login der Transition-Identitaet (Factory-Bot)
+        required: true
+        type: string
+      role_label_map_json:
+        description: >
+          JSON-Objekt: Label -> Rollenname (nicht Pfad!).
+          Erlaubte Werte: intake-coordinator, solution-architect,
+          test-designer, implementer, adversary, deployer
+        required: true
+        type: string
+      max_attempts:
+        description: Maximale Anzahl Agenten-Versuche pro Issue
+        required: false
+        type: number
+        default: 3
+      action_sha:
+        description: Commit-SHA der claude-code-action
+        required: true
+        type: string
+      core_ref:
+        description: SHA dieses Repositoriums fuer den Rollenrahmen
+        required: true
+        type: string
+    outputs:
+      allowed:
+        description: true wenn der Uebergang erlaubt war
+        value: ${{ jobs.uebergang.outputs.allowed }}
+      role_name:
+        description: Rollenname fuer das Ziel-Label
+        value: ${{ jobs.uebergang.outputs.role_name }}
+      agent_status:
+        description: Ergebnis des Agentenlaufs
+        value: ${{ jobs.uebergang.outputs.agent_status }}
+    secrets:
+      transition_token:
+        description: GitHub-Token fuer Label- und Kommentar-Operationen
+        required: true
+      anthropic_api_key:
+        description: Anthropic API-Schluessel fuer den Agentenlauf
+        required: true
+
+permissions:
+  issues: write
+  contents: read
+
+jobs:
+  uebergang:
+    name: Zustandsuebergang (${{ inputs.new_label }})
+    runs-on: ubuntu-latest
+    outputs:
+      allowed: ${{ steps.pruefung.outputs.allowed }}
+      role_name: ${{ steps.pruefung.outputs.role_name }}
+      agent_status: ${{ steps.agent_ergebnis.outputs.status || 'skipped' }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+
+      # -----------------------------------------------------------------------
+      # Schritt 1: Akteur und Vorbedingungen pruefen
+      # -----------------------------------------------------------------------
+      - name: Transition pruefen
+        id: pruefung
+        env:
+          GATE_ACTOR_LOGIN: ${{ inputs.actor_login }}
+          GATE_TRANSITION_IDENTITY_LOGIN: ${{ inputs.transition_identity_login }}
+          GATE_HUMAN_GATE_LOGINS: ${{ inputs.human_gate_logins }}
+          GATE_NEW_LABEL: ${{ inputs.new_label }}
+          GATE_MAX_ATTEMPTS: ${{ inputs.max_attempts }}
+          GATE_ROLE_LABEL_MAP_JSON: ${{ inputs.role_label_map_json }}
+          GATE_CURRENT_ATTEMPTS: '0'
+        run: python3 scripts/transition_check.py
+
+      # -----------------------------------------------------------------------
+      # Schritt 2: Bei unberechtigtem Akteur -- Label zuruecksetzen, flaggen
+      # -----------------------------------------------------------------------
+      - name: Unauthorized-Transition behandeln
+        if: steps.pruefung.outputs.allowed == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.transition_token }}
+          GATE_ISSUE: ${{ inputs.issue_number }}
+          GATE_NEW_LABEL: ${{ inputs.new_label }}
+          GATE_ACTOR: ${{ inputs.actor_login }}
+          GATE_RUN_ID: ${{ github.run_id }}
+        run: |
+          python3 - << 'PYEOF'
+          import os
+          import subprocess
+
+          issue = os.environ["GATE_ISSUE"]
+          label = os.environ["GATE_NEW_LABEL"]
+          actor = os.environ["GATE_ACTOR"]
+          run_id = os.environ["GATE_RUN_ID"]
+          token = os.environ["GH_TOKEN"]
+
+          # Kommentar mit Erklaerung setzen
+          kommentar = (
+              f"<!-- factory:unauthorized -->\n"
+              f"**Abgewiesener Uebergang** (Run {run_id})\n\n"
+              f"Akteur `{actor}` ist nicht berechtigt, Label `{label}` zu setzen.\n"
+              f"Berechtigte Logins: Transition-Identitaet oder Human-Gate-Logins.\n"
+          )
+          subprocess.run(
+              ["gh", "issue", "comment", issue, "--body", kommentar],
+              check=True,
+              env={**os.environ, "GH_TOKEN": token},
+          )
+
+          # Flag setzen
+          subprocess.run(
+              ["gh", "issue", "edit", issue, "--add-label", "flag:unauthorized-transition"],
+              check=False,
+              env={**os.environ, "GH_TOKEN": token},
+          )
+
+          # Ziel-Label entfernen (wurde eventuell schon gesetzt)
+          subprocess.run(
+              ["gh", "issue", "edit", issue, "--remove-label", label],
+              check=False,
+              env={**os.environ, "GH_TOKEN": token},
+          )
+          PYEOF
+
+      # -----------------------------------------------------------------------
+      # Schritt 3: Attempt-Eintrag VOR dem Agentenlauf ins Issue schreiben
+      # -----------------------------------------------------------------------
+      - name: Attempt-Eintrag schreiben
+        if: steps.pruefung.outputs.allowed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.transition_token }}
+          GATE_ISSUE: ${{ inputs.issue_number }}
+          GATE_ROLE: ${{ steps.pruefung.outputs.role_name }}
+          GATE_RUN_ID: ${{ github.run_id }}
+          GATE_ACTOR: ${{ inputs.actor_login }}
+          GATE_HUMAN: ${{ steps.pruefung.outputs.human_intervention }}
+        run: |
+          python3 - << 'PYEOF'
+          import os
+          import subprocess
+          from datetime import datetime, timezone
+
+          issue = os.environ["GATE_ISSUE"]
+          rolle = os.environ["GATE_ROLE"]
+          run_id = os.environ["GATE_RUN_ID"]
+          actor = os.environ["GATE_ACTOR"]
+          ist_mensch = os.environ.get("GATE_HUMAN", "false") == "true"
+          token = os.environ["GH_TOKEN"]
+
+          zeitstempel = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+          art = "menschlicher Eingriff" if ist_mensch else "automatisch"
+          kommentar = (
+              f"<!-- factory:attempt run={run_id} -->\n"
+              f"**Agentenlauf gestartet** ({art})\n\n"
+              f"| Feld | Wert |\n"
+              f"|------|------|\n"
+              f"| Rolle | `{rolle}` |\n"
+              f"| Akteur | `{actor}` |\n"
+              f"| Zeitstempel | {zeitstempel} |\n"
+              f"| Run-ID | {run_id} |\n"
+          )
+          subprocess.run(
+              ["gh", "issue", "comment", issue, "--body", kommentar],
+              check=True,
+              env={**os.environ, "GH_TOKEN": token},
+          )
+          print(f"Attempt-Eintrag gesetzt fuer Run {run_id}")
+          PYEOF
+
+      # -----------------------------------------------------------------------
+      # Schritt 4: Agentenlauf starten
+      # -----------------------------------------------------------------------
+      - name: Agentenlauf starten
+        id: agent_lauf
+        if: steps.pruefung.outputs.allowed == 'true'
+        uses: ./.github/workflows/run-agent.yml
+        with:
+          role: ${{ steps.pruefung.outputs.role_name }}
+          issue_number: ${{ inputs.issue_number }}
+          action_sha: ${{ inputs.action_sha }}
+          core_ref: ${{ inputs.core_ref }}
+        secrets:
+          anthropic_api_key: ${{ secrets.anthropic_api_key }}
+
+      # -----------------------------------------------------------------------
+      # Schritt 5: Ergebnis pruefen und naechstes Label setzen
+      # -----------------------------------------------------------------------
+      - name: Ergebnis auswerten und Label setzen
+        id: agent_ergebnis
+        if: steps.pruefung.outputs.allowed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.transition_token }}
+          GATE_ISSUE: ${{ inputs.issue_number }}
+          GATE_NEW_LABEL: ${{ inputs.new_label }}
+          GATE_AGENT_STATUS: ${{ steps.agent_lauf.outputs.status || 'agent_error' }}
+          GATE_SCHEMA_VALID: ${{ steps.agent_lauf.outputs.schema_valid || 'false' }}
+          GATE_RUN_ID: ${{ github.run_id }}
+        run: |
+          python3 - << 'PYEOF'
+          import os
+          import subprocess
+          import sys
+
+          issue = os.environ["GATE_ISSUE"]
+          label = os.environ["GATE_NEW_LABEL"]
+          agent_status = os.environ["GATE_AGENT_STATUS"]
+          schema_valid = os.environ["GATE_SCHEMA_VALID"] == "true"
+          run_id = os.environ["GATE_RUN_ID"]
+          token = os.environ["GH_TOKEN"]
+
+          github_output = os.environ.get("GITHUB_OUTPUT", "")
+          def schreibe(k, v):
+              if github_output:
+                  with open(github_output, "a") as f:
+                      f.write(f"{k}={v}\n")
+
+          if agent_status != "success" or not schema_valid:
+              status = "schema_invalid" if not schema_valid else "agent_error"
+              schreibe("status", status)
+              kommentar = (
+                  f"<!-- factory:result run={run_id} status={status} -->\n"
+                  f"**Agentenlauf fehlgeschlagen** (Run {run_id})\n\n"
+                  f"Status: `{status}` | Schema gueltig: `{schema_valid}`\n"
+              )
+              subprocess.run(
+                  ["gh", "issue", "comment", issue, "--body", kommentar],
+                  check=False,
+                  env={**os.environ, "GH_TOKEN": token},
+              )
+              sys.exit(1)
+
+          # Naechstes Label setzen (Zustandsmaschine vorruecken)
+          subprocess.run(
+              ["gh", "issue", "edit", issue, "--add-label", label],
+              check=True,
+              env={**os.environ, "GH_TOKEN": token},
+          )
+          schreibe("status", "success")
+          print(f"Label '{label}' gesetzt. Uebergang abgeschlossen.")
+          PYEOF

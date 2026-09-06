@@ -1,0 +1,219 @@
+name: G8/G9 Code-Review (Adversary + Scope-Pruefung)
+
+# Deckt G8 (inhaltlicher Code-Review durch Adversary-Agenten) und G9
+# (Scope-Pruefung: hat der Implementer nur im deklarierten Scope gearbeitet?)
+# ab.
+#
+# G9 laeuft maschinell als Pfadvergleich. Abweichungen werden dem Agenten
+# als Kontext uebergeben -- nicht als Urteil. Der Agent entscheidet, ob
+# die Abweichungen gerechtfertigt sind.
+#
+# UNGETESTET -- dieser Workflow laeuft erst mit der ersten echten Anbindung
+# eines Produktrepos und einer genehmigten GitHub App. Bis dahin ist er
+# nicht end-to-end pruefbar.
+#
+# Fremde Actions sind auf einen Commit-SHA gepinnt.
+
+on:
+  workflow_call:
+    inputs:
+      issue_number:
+        description: Nummer des Issues
+        required: true
+        type: number
+      head_sha:
+        description: Head-Commit-SHA des zu pruefenden PRs
+        required: true
+        type: string
+      base_sha:
+        description: Basis-Commit-SHA fuer den Diff
+        required: true
+        type: string
+      declared_scope_paths:
+        description: >
+          Komma-getrennte Glob-Muster fuer den deklarierten Scope.
+          Dateien ausserhalb werden dem Agenten als Kontext gemeldet.
+        required: false
+        type: string
+        default: ''
+      max_turns:
+        description: Maximale Anzahl Agenten-Turns
+        required: false
+        type: number
+        default: 20
+      action_sha:
+        description: Commit-SHA der claude-code-action
+        required: true
+        type: string
+      core_ref:
+        description: SHA dieses Repositoriums fuer den Rollenrahmen
+        required: true
+        type: string
+    outputs:
+      pass:
+        description: true wenn kein BLOCK-Befund
+        value: ${{ jobs.codereview.outputs.pass }}
+      scope_violations:
+        description: JSON-Array der Dateien ausserhalb des Scopes
+        value: ${{ jobs.codereview.outputs.scope_violations }}
+      findings_json:
+        description: JSON-Array aller Befunde
+        value: ${{ jobs.codereview.outputs.findings_json }}
+    secrets:
+      anthropic_api_key:
+        description: Anthropic API-Schluessel fuer den Agentenlauf
+        required: true
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+jobs:
+  codereview:
+    name: Code-Review (G8 + G9)
+    runs-on: ubuntu-latest
+    outputs:
+      pass: ${{ steps.auswertung.outputs.pass }}
+      scope_violations: ${{ steps.scope.outputs.scope_violations }}
+      findings_json: ${{ steps.auswertung.outputs.findings_json }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+
+      # -----------------------------------------------------------------------
+      # Schritt 1 (G9): Maschineller Scope-Vergleich
+      # Abweichungen werden als Kontext an den Agenten uebergeben, nicht als Urteil.
+      # -----------------------------------------------------------------------
+      - name: Scope-Vergleich (G9)
+        id: scope
+        env:
+          GATE_BASE_SHA: ${{ inputs.base_sha }}
+          GATE_HEAD_SHA: ${{ inputs.head_sha }}
+          GATE_DECLARED_SCOPE: ${{ inputs.declared_scope_paths }}
+        run: |
+          python3 - << 'PYEOF'
+          import fnmatch
+          import json
+          import os
+          import subprocess
+          import sys
+
+          basis = os.environ.get("GATE_BASE_SHA", "")
+          kopf = os.environ.get("GATE_HEAD_SHA", "")
+          scope_roh = os.environ.get("GATE_DECLARED_SCOPE", "")
+          scope_muster = [m.strip() for m in scope_roh.split(",") if m.strip()]
+
+          github_output = os.environ.get("GITHUB_OUTPUT", "")
+          def schreibe(k, v):
+              if github_output:
+                  with open(github_output, "a") as f:
+                      f.write(f"{k}={v}\n")
+
+          if not scope_muster:
+              print("Kein declared_scope_paths gesetzt -- Scope-Pruefung uebersprungen.")
+              schreibe("scope_violations", "[]")
+              schreibe("scope_context", "")
+              sys.exit(0)
+
+          lauf = subprocess.run(
+              ["git", "diff", "--name-only", basis, kopf],
+              capture_output=True, text=True,
+          )
+          if lauf.returncode != 0:
+              print(f"FEHLER: git diff schlug fehl: {lauf.stderr}", file=sys.stderr)
+              sys.exit(2)
+
+          geaendert = [z.strip() for z in lauf.stdout.splitlines() if z.strip()]
+          ausserhalb = [
+              f for f in geaendert
+              if not any(fnmatch.fnmatch(f, m) for m in scope_muster)
+          ]
+
+          schreibe("scope_violations", json.dumps(ausserhalb))
+
+          if ausserhalb:
+              kontext = (
+                  "## Scope-Abweichungen (G9)\n\n"
+                  "Folgende Dateien wurden geaendert, liegen aber ausserhalb des "
+                  "deklarierten Scopes. Pruefe, ob die Aenderungen gerechtfertigt sind:\n\n"
+                  + "\n".join(f"- `{f}`" for f in ausserhalb)
+              )
+              kontext_datei = "/tmp/scope_context.md"
+              with open(kontext_datei, "w", encoding="utf-8") as f:
+                  f.write(kontext)
+              schreibe("scope_context", kontext_datei)
+              print(f"{len(ausserhalb)} Datei(en) ausserhalb des Scopes -- wird Agenten als Kontext uebergeben.")
+          else:
+              schreibe("scope_context", "")
+              print("Alle geaenderten Dateien liegen im deklarierten Scope.")
+          PYEOF
+
+      # -----------------------------------------------------------------------
+      # Schritt 2 (G8): Agentenlauf (Adversary)
+      # -----------------------------------------------------------------------
+      - name: Agentenlauf (Adversary, G8)
+        id: agent
+        uses: ./.github/workflows/run-agent.yml
+        with:
+          role: adversary
+          issue_number: ${{ inputs.issue_number }}
+          prompt_extension_path: ${{ steps.scope.outputs.scope_context }}
+          max_turns: ${{ inputs.max_turns }}
+          action_sha: ${{ inputs.action_sha }}
+          core_ref: ${{ inputs.core_ref }}
+        secrets:
+          anthropic_api_key: ${{ secrets.anthropic_api_key }}
+
+      # -----------------------------------------------------------------------
+      # Schritt 3: Ergebnis auswerten
+      # -----------------------------------------------------------------------
+      - name: Ergebnis auswerten
+        id: auswertung
+        if: always()
+        env:
+          GATE_RESULT_JSON: ${{ steps.agent.outputs.result_json }}
+          GATE_SCHEMA_VALID: ${{ steps.agent.outputs.schema_valid }}
+        run: |
+          python3 - << 'PYEOF'
+          import json
+          import os
+          import sys
+
+          github_output = os.environ.get("GITHUB_OUTPUT", "")
+          def schreibe(k, v):
+              if github_output:
+                  with open(github_output, "a") as f:
+                      f.write(f"{k}={v}\n")
+
+          schema_valid = os.environ.get("GATE_SCHEMA_VALID", "false") == "true"
+          if not schema_valid:
+              schreibe("pass", "false")
+              schreibe("findings_json", json.dumps(["Agentenlauf fehlgeschlagen"]))
+              sys.exit(1)
+
+          try:
+              ergebnis = json.loads(os.environ.get("GATE_RESULT_JSON", "{}"))
+          except json.JSONDecodeError:
+              schreibe("pass", "false")
+              schreibe("findings_json", json.dumps(["result.json konnte nicht geparst werden"]))
+              sys.exit(1)
+
+          befunde = ergebnis.get("findings", [])
+          kritisch = [b for b in befunde if isinstance(b, dict) and b.get("severity") == "BLOCK"]
+          bestanden = len(kritisch) == 0
+
+          schreibe("pass", "true" if bestanden else "false")
+          schreibe("findings_json", json.dumps(befunde))
+
+          if not bestanden:
+              print(f"{len(kritisch)} BLOCK-Befund(e). Code-Review nicht bestanden.", file=sys.stderr)
+              sys.exit(1)
+
+          print(f"Code-Review bestanden. {len(befunde)} Befund(e) gesamt.")
+          PYEOF
