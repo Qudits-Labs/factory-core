@@ -47,6 +47,91 @@ FAELLE = [
         1,
         "ein Secret in einem selbst ausgeloesten Workflow wird abgewiesen",
     ),
+    # --- Gate-Skripte ---
+    (
+        "gate_story_lint.py",
+        SAUBER / "story-lint",
+        0,
+        "vollstaendige Story besteht den Lint",
+    ),
+    (
+        "gate_story_lint.py",
+        VERSTOSS / "story-lint",
+        1,
+        "Story ohne Pflichtabschnitt und ohne Checkbox wird abgewiesen",
+    ),
+    (
+        "gate_adr_check.py",
+        SAUBER / "adr-check",
+        0,
+        "ADR mit allen Abschnitten und genuegend Alternativen besteht",
+    ),
+    (
+        "gate_adr_check.py",
+        VERSTOSS / "adr-check",
+        1,
+        "ADR mit zu wenigen Alternativen wird abgewiesen",
+    ),
+    (
+        "gate_test_integrity.py",
+        SAUBER / "test-integrity",
+        0,
+        "keine geschuetzte Datei geaendert -- Integritaet gewahrt",
+    ),
+    (
+        "gate_test_integrity.py",
+        VERSTOSS / "test-integrity",
+        1,
+        "geschuetzte Testdatei im Diff -- Integritaetsverstoss",
+    ),
+    (
+        "gate_doc_check.py",
+        SAUBER / "doc-check",
+        0,
+        "neuer Bezeichner steht in der zugeordneten Doku",
+    ),
+    (
+        "gate_doc_check.py",
+        VERSTOSS / "doc-check",
+        1,
+        "neuer Bezeichner fehlt in der Doku",
+    ),
+    (
+        "gate_command_report.py",
+        SAUBER / "command-check",
+        0,
+        "Befehl entspricht einem erlaubten Praefix",
+    ),
+    (
+        "gate_command_report.py",
+        VERSTOSS / "command-check",
+        1,
+        "Befehl ohne erlaubtes Praefix wird abgewiesen",
+    ),
+    (
+        "gate_health_check.py",
+        SAUBER / "health-check",
+        0,
+        "Lebendpruefung antwortet wie erwartet",
+    ),
+    (
+        "gate_health_check.py",
+        VERSTOSS / "health-check",
+        1,
+        "Lebendpruefung antwortet abweichend",
+    ),
+    (
+        "transition_check.py",
+        SAUBER / "transition-check",
+        0,
+        "berechtigte Uebergabe-Identitaet innerhalb der Versuchsgrenze",
+    ),
+    (
+        "transition_check.py",
+        VERSTOSS / "transition-check",
+        1,
+        "unbekannte Identitaet wird abgewiesen",
+    ),
 ]
 
 
