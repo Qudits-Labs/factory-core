@@ -62,6 +62,23 @@ def schreibe_ausgabe(schluessel: str, wert: str) -> None:
         print(f"  {schluessel}: {wert}")
 
 
+def baue_befunde(titel: list[str]) -> list[dict]:
+    """Formt Titelzeilen zu Befunden nach schemas/finding.schema.json.
+
+    Ein maschinelles Gate traegt WARN, nie BLOCK. BLOCK verlangt spec_ref,
+    location und reproduction; keine davon liegt hier vor, und erfundene
+    Belege waeren schlimmer als der niedrigere Grad. Ueber den Halt
+    entscheidet `pass`, nicht der Schweregrad des einzelnen Befunds.
+    """
+    befunde: list[dict] = []
+    for nummer, text in enumerate(titel, start=1):
+        gekuerzt = text if len(text) <= 200 else text[:197] + "..."
+        befunde.append(
+            {"id": f"F-{nummer:03d}", "severity": "WARN", "title": gekuerzt}
+        )
+    return befunde
+
+
 def finde_abschnitt_inhalt(text: str, titel: str) -> str | None:
     """Gibt den Text eines Markdown-Abschnitts zurueck oder None."""
     muster = re.compile(
@@ -95,7 +112,7 @@ def pruefe_adr(
     required_sections: list[str],
     min_alternatives: int,
 ) -> tuple[list[str], list[str], int]:
-    """Gibt (befunde, fehlende_abschnitte, alternativen_anzahl) zurueck."""
+    """Gibt (befund_titel, fehlende_abschnitte, alternativen_anzahl) zurueck."""
     befunde: list[str] = []
     fehlende: list[str] = []
 
@@ -191,17 +208,17 @@ def main(argv: list[str]) -> int:
             )
             return 2
 
-    befunde, fehlende, alt_anzahl = pruefe_adr(text, required_sections, min_alternatives)
-    bestanden = len(befunde) == 0
+    titel, fehlende, alt_anzahl = pruefe_adr(text, required_sections, min_alternatives)
+    bestanden = len(titel) == 0
 
     schreibe_ausgabe("pass", "true" if bestanden else "false")
     schreibe_ausgabe("missing_sections", json.dumps(fehlende))
     schreibe_ausgabe("alternatives_count", str(alt_anzahl))
-    schreibe_ausgabe("findings_json", json.dumps(befunde))
+    schreibe_ausgabe("findings_json", json.dumps(baue_befunde(titel)))
 
     if not bestanden:
-        for b in befunde:
-            print(f"  BEFUND: {b}", file=sys.stderr)
+        for t in titel:
+            print(f"  BEFUND: {t}", file=sys.stderr)
         return 1
 
     print(

@@ -164,17 +164,28 @@ jobs:
                   with open(github_output, "a") as f:
                       f.write(f"{k}={v}\n")
 
+          # Auf den Fehlerpfaden gibt es kein result.json, aus dem Befunde
+          # kaemen. Der Kern baut sie selbst -- nach finding.schema.json und
+          # mit WARN, weil eine maschinelle Feststellung die drei Belege
+          # eines BLOCK nicht liefern kann. Den Halt bewirkt `pass`.
+          def maschineller_befund(titel):
+              return [{"id": "F-001", "severity": "WARN", "title": titel}]
+
           schema_valid = os.environ.get("GATE_SCHEMA_VALID", "false") == "true"
           if not schema_valid:
               schreibe("pass", "false")
-              schreibe("findings_json", json.dumps(["Agentenlauf fehlgeschlagen oder Schema ungueltig"]))
+              schreibe("findings_json", json.dumps(
+                  maschineller_befund("Agentenlauf fehlgeschlagen oder Schema ungueltig")
+              ))
               sys.exit(1)
 
           try:
               ergebnis = json.loads(os.environ.get("GATE_RESULT_JSON", "{}"))
           except json.JSONDecodeError:
               schreibe("pass", "false")
-              schreibe("findings_json", json.dumps(["result.json konnte nicht geparst werden"]))
+              schreibe("findings_json", json.dumps(
+                  maschineller_befund("result.json konnte nicht geparst werden")
+              ))
               sys.exit(1)
 
           befunde = ergebnis.get("findings", [])

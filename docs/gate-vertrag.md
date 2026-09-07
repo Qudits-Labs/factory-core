@@ -31,6 +31,12 @@ Alles Weitere ist schrittspezifisch und für die Fehlersuche da, nicht für die
 Entscheidung. Ein Schritt, dessen Ergebnis sich nur aus einem Zusatzfeld
 ablesen lässt, hat den Vertrag verletzt.
 
+`findings_json` trägt Objekte, keine Zeichenketten. Ein Prüfschritt, der eine
+Liste von Sätzen zurückgibt, spart zwei Felder ein und nimmt der Übergabe damit
+die Grundlage: ohne `severity` greift die Herabstufung nicht, ohne `id` lässt
+sich ein Befund über zwei Läufe hinweg nicht wiedererkennen. Ein leeres Array
+ist der übliche Fall.
+
 ## Schweregrade
 
 | Grad | Wirkung | Wer setzt ihn |
@@ -43,6 +49,14 @@ Ein `BLOCK` ohne die drei Belegangaben aus `finding.schema.json` wird auf `WARN`
 herabgestuft, und zwar von der Übergabe, nicht vom Prüfschritt. Der
 herabgestufte Befund trägt danach das Feld `downgraded_from`, damit der Vorgang
 nachvollziehbar bleibt.
+
+Eine maschinelle Prüfung setzt `WARN`. Sie verfügt über keine der drei
+Belegangaben und soll sie sich auch nicht ausdenken: ein erfundener
+Reproduktionsweg umgeht genau die Herabstufung, die ihn verlangt. Dass ein
+mechanisches Gate trotzdem anhält, folgt nicht aus dem Schweregrad seiner
+Befunde, sondern aus seinem `pass`. Es misst eine Bedingung, die erfüllt ist
+oder nicht. Die Spalte Wirkung sagt, was ein einzelner Befund zu dieser
+Entscheidung beiträgt, nicht was der Schritt insgesamt zurückgibt.
 
 ## Wie ein Produktrepositorium einen Schwellwert beisteuert
 

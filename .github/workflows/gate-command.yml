@@ -225,11 +225,15 @@ jobs:
 
           # Befunde nach dem Gate-Vertrag: leer bei bestanden, sonst ein
           # Eintrag mit dem Exit-Code, der den Schritt hat scheitern lassen.
-          befunde: list[str] = []
+          # WARN, nicht BLOCK: ein BLOCK verlangt spec_ref, location und
+          # reproduction, und die hat eine reine Exit-Code-Auswertung nicht.
+          befunde: list[dict] = []
           if not bestanden:
-              befunde.append(
-                  f"Befehl endete mit Exit-Code {exit_code} statt 0."
-              )
+              befunde.append({
+                  "id": "F-001",
+                  "severity": "WARN",
+                  "title": f"Befehl endete mit Exit-Code {exit_code} statt 0.",
+              })
 
           bericht = {
               "pass": bestanden,

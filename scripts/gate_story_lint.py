@@ -57,13 +57,30 @@ def schreibe_ausgabe(schluessel: str, wert: str) -> None:
         print(f"  {schluessel}: {wert}")
 
 
+def baue_befunde(titel: list[str]) -> list[dict]:
+    """Formt Titelzeilen zu Befunden nach schemas/finding.schema.json.
+
+    Ein maschinelles Gate traegt WARN, nie BLOCK. BLOCK verlangt spec_ref,
+    location und reproduction; keine davon liegt hier vor, und erfundene
+    Belege waeren schlimmer als der niedrigere Grad. Ueber den Halt
+    entscheidet `pass`, nicht der Schweregrad des einzelnen Befunds.
+    """
+    befunde: list[dict] = []
+    for nummer, text in enumerate(titel, start=1):
+        gekuerzt = text if len(text) <= 200 else text[:197] + "..."
+        befunde.append(
+            {"id": f"F-{nummer:03d}", "severity": "WARN", "title": gekuerzt}
+        )
+    return befunde
+
+
 def pruefe_body(
     body: str,
     labels: list[str],
     required_label_prefixes: list[str],
     nutzen_required: bool,
 ) -> list[str]:
-    """Gibt eine Liste von Befund-Strings zurueck. Leer bedeutet bestanden."""
+    """Gibt die Titelzeilen der Befunde zurueck. Leer bedeutet bestanden."""
     befunde: list[str] = []
 
     for abschnitt in PFLICHTABSCHNITTE:
@@ -161,17 +178,17 @@ def main(argv: list[str]) -> int:
             print("FEHLER: GATE_ISSUE_BODY nicht gesetzt", file=sys.stderr)
             return 2
 
-    befunde = pruefe_body(body, labels, required_label_prefixes, nutzen_required)
-    bestanden = len(befunde) == 0
+    titel = pruefe_body(body, labels, required_label_prefixes, nutzen_required)
+    bestanden = len(titel) == 0
 
     schreibe_ausgabe("pass", "true" if bestanden else "false")
-    schreibe_ausgabe("findings_json", json.dumps(befunde))
+    schreibe_ausgabe("findings_json", json.dumps(baue_befunde(titel)))
 
     if not bestanden:
-        for b in befunde:
-            print(f"  BEFUND: {b}", file=sys.stderr)
+        for t in titel:
+            print(f"  BEFUND: {t}", file=sys.stderr)
         print(
-            f"\n{len(befunde)} Befund(e). Story nicht bereit.",
+            f"\n{len(titel)} Befund(e). Story nicht bereit.",
             file=sys.stderr,
         )
         return 1
