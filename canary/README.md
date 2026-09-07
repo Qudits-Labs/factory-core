@@ -45,6 +45,17 @@ Produkts. Er legt keine Dateien an und schreibt in kein Produktrepositorium.
   deklariert `pass` und `findings_json` als Ausgaben. Das ist die
   Vertragstreue-Prüfung nach `docs/gate-vertrag.md`.
 
+**Befundformat**
+- Ein Array von Befundobjekten mit `id`, `severity` und `title` besteht
+  `finding.schema.json`, ein Array von Zeichenketten fällt durch. Damit ist
+  die Formatprüfung selbst an einem Verstoss gemessen.
+- Jedes Gate-Skript läuft gegen sein sauberes und sein verletzendes Fixture,
+  und das dabei geschriebene `findings_json` wird Eintrag für Eintrag gegen
+  `finding.schema.json` gehalten. Das saubere Fixture ergibt ein leeres
+  Array, das verletzende mindestens einen Befund. Der Canary setzt dafür
+  `GITHUB_OUTPUT` auf eine temporäre Datei, damit die Ausgabe denselben Weg
+  nimmt wie in der Ausführungsumgebung.
+
 ---
 
 ## Was der Canary nicht prüfen kann

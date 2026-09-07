@@ -1,0 +1,5 @@
+url=http://example.invalid/bereitschaft
+expected_status=200
+expected_text=bereit
+retries=2
+retry_delay=0

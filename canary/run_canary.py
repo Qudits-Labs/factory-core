@@ -4,8 +4,8 @@
 Misst die Prüfschritte des Kerns gegen synthetische Fixtures und gibt je Fall
 eine Zeile aus. Er ruft scripts/validate_schemas.py und scripts/selftest.py
 auf, statt deren Logik nachzubauen. Zusätzlich prüft er Dinge, die diese
-Skripte nicht abdecken: Schema-Verweis ohne Netz, Workflow-Permissions und den
-Gate-Vertrag für workflow_call-Workflows.
+Skripte nicht abdecken: Schema-Verweis ohne Netz, Workflow-Permissions, den
+Gate-Vertrag für workflow_call-Workflows und das Format von findings_json.
 
 Ausgabe je Fall:
   OK            <name>
@@ -26,8 +26,10 @@ Aufruf:
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 try:
@@ -69,11 +71,14 @@ def _uebersprungen_(name: str, grund: str) -> None:
     print(f"UEBERSPRUNGEN {name}: {grund}")
 
 
-def _lauf(skript: Path, *args: str) -> subprocess.CompletedProcess:
+def _lauf(
+    skript: Path, *args: str, zusatz_env: dict[str, str] | None = None
+) -> subprocess.CompletedProcess:
     return subprocess.run(
         [sys.executable, str(skript), *args],
         capture_output=True,
         text=True,
+        env={**os.environ, **zusatz_env} if zusatz_env else None,
     )
 
 
@@ -200,6 +205,11 @@ _CANARY_GATE_FAELLE: list[tuple[str, str, str]] = [
         "gate_doc_check",
         "doc-check-sauber",
         "doc-check-neu-ohne-doku",    # synthetischer Diff: neuer Bezeichner fehlt in Doku
+    ),
+    (
+        "gate_health_check",
+        "health-check-sauber",
+        "health-check-text-fehlt",    # HTTP 200, aber der erwartete Text fehlt im Body
     ),
 ]
 
@@ -522,6 +532,152 @@ def pruefe_workflow_struktur() -> None:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# 10. Befundformat
+#     `findings_json` trägt Objekte nach finding.schema.json, keine
+#     Zeichenketten. Erst dadurch greifen Schweregrad und Belegpflicht.
+#     Zwei Teile: die Formatprüfung wird an zwei Literal-Fixtures gemessen,
+#     danach läuft sie gegen die echte Ausgabe jedes Gate-Skripts.
+# ─────────────────────────────────────────────────────────────────────────────
+# (Fixture-Datei, soll das Schema bestehen, Beschreibung)
+_BEFUND_FIXTURES: list[tuple[str, bool, str]] = [
+    (
+        "findings-gueltig.json",
+        True,
+        "Befunde als Objekte mit id, severity und title bestehen finding.schema.json",
+    ),
+    (
+        "findings-zeichenketten.json",
+        False,
+        "das alte Format, ein Array von Zeichenketten, faellt durch",
+    ),
+]
+
+
+def _befund_validator() -> Draft202012Validator | None:
+    """Baut den Validierer fuer finding.schema.json aus dem Dateisystem."""
+    schema_datei = SCHEMAS / "finding.schema.json"
+    if not schema_datei.exists():
+        return None
+    registry = Registry()
+    for datei in sorted(SCHEMAS.glob("*.json")):
+        inhalt = json.loads(datei.read_text(encoding="utf-8"))
+        ressource = Resource.from_contents(inhalt)
+        registry = registry.with_resource(uri=datei.name, resource=ressource)
+        if "$id" in inhalt:
+            registry = registry.with_resource(uri=inhalt["$id"], resource=ressource)
+    schema = json.loads(schema_datei.read_text(encoding="utf-8"))
+    return Draft202012Validator(schema, registry=registry)
+
+
+def _lies_findings_json(skript: Path, fixture: Path) -> tuple[list | None, str]:
+    """Laesst ein Gate laufen und liest dessen findings_json-Ausgabe.
+
+    GITHUB_OUTPUT zeigt dabei auf eine temporaere Datei. Damit entsteht die
+    Ausgabe auf demselben Weg wie in der Ausfuehrungsumgebung und nicht auf
+    einem Sonderweg, den nur der Canary kennt.
+    """
+    with tempfile.TemporaryDirectory() as vz:
+        ausgabe_datei = Path(vz) / "github_output.txt"
+        ausgabe_datei.touch()
+        lauf = _lauf(
+            skript,
+            str(fixture),
+            zusatz_env={"GITHUB_OUTPUT": str(ausgabe_datei)},
+        )
+        if lauf.returncode not in (0, 1):
+            return None, (
+                f"Exit {lauf.returncode} statt 0 oder 1. "
+                + (lauf.stderr.strip()[:200] or lauf.stdout.strip()[:200])
+            )
+        zeilen = ausgabe_datei.read_text(encoding="utf-8").splitlines()
+
+    treffer = [z for z in zeilen if z.startswith("findings_json=")]
+    if not treffer:
+        return None, "Ausgabe findings_json fehlt"
+    try:
+        return json.loads(treffer[-1][len("findings_json="):]), ""
+    except json.JSONDecodeError as ausnahme:
+        return None, f"findings_json ist kein gueltiges JSON: {ausnahme}"
+
+
+def pruefe_befundformat() -> None:
+    validator = _befund_validator()
+    if validator is None:
+        _uebersprungen_("befundformat", "finding.schema.json fehlt")
+        return
+
+    # Teil 1: Die Formatpruefung selbst an zwei Literal-Fixtures messen.
+    for dateiname, soll_gueltig, beschreibung in _BEFUND_FIXTURES:
+        pfad = FIXTURES / dateiname
+        if not pfad.exists():
+            _uebersprungen_(f"befundformat/{dateiname}", "Fixture fehlt")
+            continue
+        try:
+            eintraege = json.loads(pfad.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as ausnahme:
+            _fehler_(f"befundformat/{dateiname}", f"Kein gueltiges JSON: {ausnahme}")
+            continue
+        ist_gueltig = all(validator.is_valid(e) for e in eintraege)
+        if ist_gueltig == soll_gueltig:
+            _ok_(f"befundformat/{dateiname} — {beschreibung}")
+        else:
+            erwartet = "besteht" if soll_gueltig else "faellt durch"
+            tatsaechlich = "besteht" if ist_gueltig else "faellt durch"
+            _fehler_(
+                f"befundformat/{dateiname}",
+                f"Erwartet: {erwartet}, tatsaechlich: {tatsaechlich}",
+            )
+
+    # Teil 2: Die echte Ausgabe jedes Gate-Skripts, sauber und verletzend.
+    for skriptname, sauber_name, verstoss_name in _CANARY_GATE_FAELLE:
+        skript = SCRIPTS / f"{skriptname}.py"
+        if not skript.exists():
+            _uebersprungen_(f"befundformat/{skriptname}", f"{skript.name} fehlt")
+            continue
+
+        for fixture_name, erwartet_befunde in (
+            (sauber_name, False),
+            (verstoss_name, True),
+        ):
+            fall = f"befundformat/{skriptname}/{fixture_name}"
+            fixture = FIXTURES / fixture_name
+            if not fixture.is_dir():
+                _uebersprungen_(fall, f"Fixture {fixture_name} fehlt")
+                continue
+
+            eintraege, grund = _lies_findings_json(skript, fixture)
+            if eintraege is None:
+                _fehler_(fall, grund)
+                continue
+            if not isinstance(eintraege, list):
+                _fehler_(fall, "findings_json ist kein Array")
+                continue
+            if erwartet_befunde and not eintraege:
+                _fehler_(fall, "verletzendes Fixture ergibt keinen einzigen Befund")
+                continue
+            if not erwartet_befunde and eintraege:
+                _fehler_(
+                    fall,
+                    f"sauberes Fixture ergibt {len(eintraege)} Befund(e) statt keinen",
+                )
+                continue
+
+            ungueltig = [e for e in eintraege if not validator.is_valid(e)]
+            if ungueltig:
+                erster = next(iter(validator.iter_errors(ungueltig[0])), None)
+                _fehler_(
+                    fall,
+                    f"{len(ungueltig)} von {len(eintraege)} Befund(en) verletzen "
+                    f"finding.schema.json: "
+                    f"{erster.message if erster else 'Grund unbekannt'}",
+                )
+            else:
+                _ok_(
+                    f"{fall} — {len(eintraege)} Befund(e) nach finding.schema.json"
+                )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Hauptprogramm
 # ─────────────────────────────────────────────────────────────────────────────
 def main() -> int:
@@ -562,6 +718,10 @@ def main() -> int:
 
     print("Schritt 9: Workflow-Struktur (check_workflow_struktur.py)")
     pruefe_workflow_struktur()
+    print()
+
+    print("Schritt 10: Befundformat (findings_json gegen finding.schema.json)")
+    pruefe_befundformat()
     print()
 
     gesamt = len(_ok) + len(_fehler) + len(_uebersprungen)
