@@ -1,0 +1,12 @@
+[
+  {
+    "id": "F-001",
+    "severity": "WARN",
+    "title": "Pflichtabschnitt fehlt: ## Akzeptanzkriterien"
+  },
+  {
+    "id": "F-002",
+    "severity": "WARN",
+    "title": "Nutzenmarker fehlt (<!-- nutzen: ... -->)"
+  }
+]

@@ -60,6 +60,23 @@ def schreibe_ausgabe(schluessel: str, wert: str) -> None:
         print(f"  {schluessel}: {wert}")
 
 
+def baue_befunde(titel: list[str]) -> list[dict]:
+    """Formt Titelzeilen zu Befunden nach schemas/finding.schema.json.
+
+    Ein maschinelles Gate traegt WARN, nie BLOCK. BLOCK verlangt spec_ref,
+    location und reproduction; keine davon liegt hier vor, und erfundene
+    Belege waeren schlimmer als der niedrigere Grad. Ueber den Halt
+    entscheidet `pass`, nicht der Schweregrad des einzelnen Befunds.
+    """
+    befunde: list[dict] = []
+    for nummer, text in enumerate(titel, start=1):
+        gekuerzt = text if len(text) <= 200 else text[:197] + "..."
+        befunde.append(
+            {"id": f"F-{nummer:03d}", "severity": "WARN", "title": gekuerzt}
+        )
+    return befunde
+
+
 def http_get(url: str) -> tuple[int, str]:
     """Fuehrt einen HTTP-GET aus. Gibt (statuscode, body) zurueck."""
     try:
@@ -200,16 +217,16 @@ def main(argv: list[str]) -> int:
 
     # Befunde nach dem Gate-Vertrag: leer bei bestanden, sonst der Grund des
     # fehlgeschlagenen Health-Checks und, falls erfolgt, der Rollback.
-    befunde: list[str] = []
+    titel: list[str] = []
     if not bestanden:
-        befunde.append(f"Health-Check auf {url} fehlgeschlagen: {ergebnis}")
+        titel.append(f"Health-Check auf {url} fehlgeschlagen: {ergebnis}")
         if rollback_ausgefuehrt:
-            befunde.append("Rollback wurde ausgefuehrt.")
+            titel.append("Rollback wurde ausgefuehrt.")
 
     schreibe_ausgabe("pass", "true" if bestanden else "false")
     schreibe_ausgabe("health_check_result", ergebnis)
     schreibe_ausgabe("rollback_executed", "true" if rollback_ausgefuehrt else "false")
-    schreibe_ausgabe("findings_json", json.dumps(befunde))
+    schreibe_ausgabe("findings_json", json.dumps(baue_befunde(titel)))
 
     if not bestanden:
         print(

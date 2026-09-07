@@ -59,6 +59,23 @@ def schreibe_ausgabe(schluessel: str, wert: str) -> None:
         print(f"  {schluessel}: {wert}")
 
 
+def baue_befunde(titel: list[str]) -> list[dict]:
+    """Formt Titelzeilen zu Befunden nach schemas/finding.schema.json.
+
+    Ein maschinelles Gate traegt WARN, nie BLOCK. BLOCK verlangt spec_ref,
+    location und reproduction; keine davon liegt hier vor, und erfundene
+    Belege waeren schlimmer als der niedrigere Grad. Ueber den Halt
+    entscheidet `pass`, nicht der Schweregrad des einzelnen Befunds.
+    """
+    befunde: list[dict] = []
+    for nummer, text in enumerate(titel, start=1):
+        gekuerzt = text if len(text) <= 200 else text[:197] + "..."
+        befunde.append(
+            {"id": f"F-{nummer:03d}", "severity": "WARN", "title": gekuerzt}
+        )
+    return befunde
+
+
 def git_diff_zeilen(basis: str, kopf: str, pfad: str) -> tuple[list[str], list[str]]:
     """Gibt (hinzugefuegte_zeilen, entfernte_zeilen) zurueck."""
     lauf = subprocess.run(
@@ -229,7 +246,7 @@ def main(argv: list[str]) -> int:
         alle_veraltet.extend(veraltet)
 
     bestanden = not alle_fehlend and not alle_veraltet
-    befunde = (
+    titel = (
         [f"Fehlend in Doku: {b}" for b in alle_fehlend]
         + [
             f"Veraltet in Doku (Bezeichner entfernt, aber noch erwaehnt): {v}"
@@ -240,11 +257,11 @@ def main(argv: list[str]) -> int:
     schreibe_ausgabe("pass", "true" if bestanden else "false")
     schreibe_ausgabe("missing_entities", json.dumps(alle_fehlend))
     schreibe_ausgabe("stale_entities", json.dumps(alle_veraltet))
-    schreibe_ausgabe("findings_json", json.dumps(befunde))
+    schreibe_ausgabe("findings_json", json.dumps(baue_befunde(titel)))
 
     if not bestanden:
-        for b in befunde:
-            print(f"  BEFUND: {b}", file=sys.stderr)
+        for t in titel:
+            print(f"  BEFUND: {t}", file=sys.stderr)
         return 1
 
     print("Dokumentations-Pruefung bestanden.")

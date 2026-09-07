@@ -50,6 +50,23 @@ def schreibe_ausgabe(schluessel: str, wert: str) -> None:
         print(f"  {schluessel}: {wert}")
 
 
+def baue_befunde(titel: list[str]) -> list[dict]:
+    """Formt Titelzeilen zu Befunden nach schemas/finding.schema.json.
+
+    Ein maschinelles Gate traegt WARN, nie BLOCK. BLOCK verlangt spec_ref,
+    location und reproduction; keine davon liegt hier vor, und erfundene
+    Belege waeren schlimmer als der niedrigere Grad. Ueber den Halt
+    entscheidet `pass`, nicht der Schweregrad des einzelnen Befunds.
+    """
+    befunde: list[dict] = []
+    for nummer, text in enumerate(titel, start=1):
+        gekuerzt = text if len(text) <= 200 else text[:197] + "..."
+        befunde.append(
+            {"id": f"F-{nummer:03d}", "severity": "WARN", "title": gekuerzt}
+        )
+    return befunde
+
+
 def passt_auf_muster(dateipfad: str, muster_liste: list[str]) -> bool:
     return any(fnmatch.fnmatch(dateipfad, m) for m in muster_liste)
 
@@ -120,14 +137,15 @@ def main(argv: list[str]) -> int:
             raise
 
     verletzungen = [f for f in changed if passt_auf_muster(f, protected)]
+    titel = [f"Geschuetzte Datei geaendert: {v}" for v in verletzungen]
 
     schreibe_ausgabe("pass", "true" if not verletzungen else "false")
     schreibe_ausgabe("changed_files", json.dumps(changed))
-    schreibe_ausgabe("findings_json", json.dumps(verletzungen))
+    schreibe_ausgabe("findings_json", json.dumps(baue_befunde(titel)))
 
     if verletzungen:
-        for v in verletzungen:
-            print(f"  BEFUND: Geschuetzte Datei geaendert: {v}", file=sys.stderr)
+        for t in titel:
+            print(f"  BEFUND: {t}", file=sys.stderr)
         return 1
 
     print(
