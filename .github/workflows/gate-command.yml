@@ -78,6 +78,9 @@ on:
       report_json:
         description: Strukturierter Bericht als JSON-String
         value: ${{ jobs.ausfuehren.outputs.report_json }}
+      findings_json:
+        description: JSON-Array der Befunde
+        value: ${{ jobs.ausfuehren.outputs.findings_json }}
 
 permissions:
   contents: read
@@ -91,6 +94,7 @@ jobs:
       exit_code: ${{ steps.ergebnis.outputs.exit_code }}
       tc_ids_found: ${{ steps.ergebnis.outputs.tc_ids_found }}
       report_json: ${{ steps.ergebnis.outputs.report_json }}
+      findings_json: ${{ steps.ergebnis.outputs.findings_json }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
@@ -218,6 +222,15 @@ jobs:
                   print(f"WARNUNG: tc_id_pattern ist ungueltig: {e}")
 
           bestanden = exit_code == 0
+
+          # Befunde nach dem Gate-Vertrag: leer bei bestanden, sonst ein
+          # Eintrag mit dem Exit-Code, der den Schritt hat scheitern lassen.
+          befunde: list[str] = []
+          if not bestanden:
+              befunde.append(
+                  f"Befehl endete mit Exit-Code {exit_code} statt 0."
+              )
+
           bericht = {
               "pass": bestanden,
               "exit_code": exit_code,
@@ -232,6 +245,7 @@ jobs:
                   f.write(f"exit_code={exit_code}\n")
                   f.write(f"tc_ids_found={json.dumps(tc_ids)}\n")
                   f.write(f"report_json={json.dumps(bericht)}\n")
+                  f.write(f"findings_json={json.dumps(befunde)}\n")
 
           print(f"Exit-Code: {exit_code}, bestanden: {bestanden}")
           if tc_ids:

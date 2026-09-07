@@ -1,0 +1,28 @@
+# Fixture, kein aktiver Workflow.
+#
+# Ein wiederverwendbarer Workflow wird auf Job-Ebene eingebunden (uses: im
+# Job, kein uses: in einem Step). Das ist die einzige erlaubte Form.
+# Diese Datei darf keinen Strukturfund ausloesen.
+name: sauber-workflow-struktur
+on:
+  workflow_call:
+    inputs:
+      issue_number:
+        description: Nummer des Issues
+        required: true
+        type: number
+permissions:
+  contents: read
+jobs:
+  vorbereitung:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Eingaben pruefen
+        run: echo "Strukturpruefung laeuft"
+  aufruf:
+    needs: vorbereitung
+    uses: ./.github/workflows/run-agent.yml
+    with:
+      role: implementer
+      issue_number: ${{ inputs.issue_number }}
+      core_ref: ${{ github.sha }}

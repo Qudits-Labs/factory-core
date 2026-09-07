@@ -121,6 +121,18 @@ FAELLE = [
         "Lebendpruefung antwortet abweichend",
     ),
     (
+        "check_workflow_struktur.py",
+        SAUBER,
+        0,
+        "strukturell saubere Workflows -- kein Ausdruck in uses:, kein Reusable-als-Step",
+    ),
+    (
+        "check_workflow_struktur.py",
+        VERSTOSS,
+        1,
+        "Ausdruck in uses: und Reusable-Workflow-als-Step werden abgewiesen",
+    ),
+    (
         "transition_check.py",
         SAUBER / "transition-check",
         0,

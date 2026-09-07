@@ -41,6 +41,7 @@ Exit-Codes:
 """
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import sys
@@ -197,9 +198,18 @@ def main(argv: list[str]) -> int:
                 file=sys.stderr,
             )
 
+    # Befunde nach dem Gate-Vertrag: leer bei bestanden, sonst der Grund des
+    # fehlgeschlagenen Health-Checks und, falls erfolgt, der Rollback.
+    befunde: list[str] = []
+    if not bestanden:
+        befunde.append(f"Health-Check auf {url} fehlgeschlagen: {ergebnis}")
+        if rollback_ausgefuehrt:
+            befunde.append("Rollback wurde ausgefuehrt.")
+
     schreibe_ausgabe("pass", "true" if bestanden else "false")
     schreibe_ausgabe("health_check_result", ergebnis)
     schreibe_ausgabe("rollback_executed", "true" if rollback_ausgefuehrt else "false")
+    schreibe_ausgabe("findings_json", json.dumps(befunde))
 
     if not bestanden:
         print(

@@ -30,9 +30,12 @@ on:
         required: true
         type: string
     outputs:
-      mechanical_pass:
-        description: true wenn keine fehlenden oder veralteten Entitaeten
-        value: ${{ jobs.dokupruefung.outputs.mechanical_pass }}
+      pass:
+        description: >
+          true wenn keine fehlenden oder veralteten Entitaeten. Nur der
+          maschinelle Teil -- die inhaltliche Bewertung der Doku ist ein
+          eigenes Gate.
+        value: ${{ jobs.dokupruefung.outputs.pass }}
       missing_entities:
         description: JSON-Array der Entitaeten, die in der Doku fehlen
         value: ${{ jobs.dokupruefung.outputs.missing_entities }}
@@ -51,7 +54,7 @@ jobs:
     name: Dokumentations-Vollstaendigkeit
     runs-on: ubuntu-latest
     outputs:
-      mechanical_pass: ${{ steps.pruefung.outputs.mechanical_pass }}
+      pass: ${{ steps.pruefung.outputs.pass }}
       missing_entities: ${{ steps.pruefung.outputs.missing_entities }}
       stale_entities: ${{ steps.pruefung.outputs.stale_entities }}
       findings_json: ${{ steps.pruefung.outputs.findings_json }}

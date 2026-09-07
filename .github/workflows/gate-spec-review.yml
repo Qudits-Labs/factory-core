@@ -3,6 +3,11 @@ name: G3 Spec-Review (Adversary)
 # Laedt den Adversary-Agenten, um eine Spezifikation zu pruefen.
 # Ruft run-agent.yml mit role: adversary auf und wertet result.json aus.
 #
+# Drei-Job-Struktur:
+#   vorbereitung  -- Checkout, optionale Spec-Datei als Kontext-String laden
+#   agent         -- Aufruf von run-agent.yml auf Job-Ebene
+#   auswertung    -- Ergebnis auswerten, Pass/Fail bestimmen
+#
 # UNGETESTET -- dieser Workflow laeuft erst mit der ersten echten Anbindung
 # eines Produktrepos und einer genehmigten GitHub App. Bis dahin ist er
 # nicht end-to-end pruefbar.
@@ -26,10 +31,6 @@ on:
         required: false
         type: number
         default: 20
-      action_sha:
-        description: Commit-SHA der claude-code-action
-        required: true
-        type: string
       core_ref:
         description: SHA dieses Repositoriums fuer den Rollenrahmen
         required: true
@@ -37,10 +38,10 @@ on:
     outputs:
       pass:
         description: true wenn der Review keine kritischen Befunde ergab
-        value: ${{ jobs.specreview.outputs.pass }}
+        value: ${{ jobs.auswertung.outputs.pass }}
       findings_json:
         description: JSON-Array der Befunde aus result.json
-        value: ${{ jobs.specreview.outputs.findings_json }}
+        value: ${{ jobs.auswertung.outputs.findings_json }}
     secrets:
       anthropic_api_key:
         description: Anthropic API-Schluessel fuer den Agentenlauf
@@ -52,12 +53,14 @@ permissions:
   pull-requests: write
 
 jobs:
-  specreview:
-    name: Spec-Review (Adversary)
+  # ---------------------------------------------------------------------------
+  # Job 1: Spec-Datei als Kontext-String aufbereiten
+  # ---------------------------------------------------------------------------
+  vorbereitung:
+    name: Spec-Erweiterung vorbereiten
     runs-on: ubuntu-latest
     outputs:
-      pass: ${{ steps.auswertung.outputs.pass }}
-      findings_json: ${{ steps.auswertung.outputs.findings_json }}
+      prompt_extension: ${{ steps.spec.outputs.prompt_extension }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
@@ -65,9 +68,12 @@ jobs:
         with:
           python-version: '3.12'
 
-      # Optionale Spec-Datei als Kontext-Erweiterung vorbereiten
+      # -----------------------------------------------------------------------
+      # Schritt 1: Optionale Spec-Datei lesen und als Multiline-String ausgeben.
+      # Leerer spec_path ergibt einen leeren prompt_extension-Output.
+      # -----------------------------------------------------------------------
       - name: Spec-Erweiterung vorbereiten
-        if: inputs.spec_path != ''
+        id: spec
         env:
           GATE_SPEC_PATH: ${{ inputs.spec_path }}
         run: |
@@ -76,40 +82,76 @@ jobs:
           import sys
           from pathlib import Path
 
-          pfad = Path(os.environ.get("GATE_SPEC_PATH", ""))
-          if not pfad.exists():
-              print(f"WARNUNG: spec_path '{pfad}' nicht gefunden, wird ignoriert.")
+          pfad_str = os.environ.get("GATE_SPEC_PATH", "").strip()
+          github_output = os.environ.get("GITHUB_OUTPUT", "")
+          DELIMITER = "FACTORY_EOF"
+
+          def schreibe_multiline(k, inhalt):
+              if not github_output:
+                  return
+              if DELIMITER in inhalt:
+                  print(
+                      f"FEHLER: Delimiter '{DELIMITER}' kommt im Spec-Inhalt vor.",
+                      file=sys.stderr,
+                  )
+                  sys.exit(2)
+              with open(github_output, "a") as f:
+                  f.write(f"{k}<<{DELIMITER}\n{inhalt}\n{DELIMITER}\n")
+
+          if not pfad_str:
+              schreibe_multiline("prompt_extension", "")
+              print("Kein spec_path angegeben -- leere Erweiterung.")
               sys.exit(0)
 
-          erweiterung = Path("/tmp/spec_extension.md")
+          pfad = Path(pfad_str)
+          if not pfad.exists():
+              print(f"WARNUNG: spec_path '{pfad}' nicht gefunden, wird ignoriert.")
+              schreibe_multiline("prompt_extension", "")
+              sys.exit(0)
+
           inhalt = (
-              f"## Zu pruefende Spezifikation\n\n"
+              "## Zu pruefende Spezifikation\n\n"
               f"Datei: `{pfad}`\n\n"
               + pfad.read_text(encoding="utf-8")
           )
-          erweiterung.write_text(inhalt, encoding="utf-8")
+          schreibe_multiline("prompt_extension", inhalt)
           print(f"Spec-Erweiterung geschrieben: {len(inhalt)} Zeichen")
           PYEOF
 
-      - name: Agentenlauf (Adversary)
-        id: agent
-        uses: ./.github/workflows/run-agent.yml
-        with:
-          role: adversary
-          issue_number: ${{ inputs.issue_number }}
-          prompt_extension_path: ${{ inputs.spec_path != '' && '/tmp/spec_extension.md' || '' }}
-          max_turns: ${{ inputs.max_turns }}
-          action_sha: ${{ inputs.action_sha }}
-          core_ref: ${{ inputs.core_ref }}
-        secrets:
-          anthropic_api_key: ${{ secrets.anthropic_api_key }}
+  # ---------------------------------------------------------------------------
+  # Job 2: Agentenlauf (Adversary)
+  # Ein wiederverwendbarer Workflow wird auf Job-Ebene eingebunden.
+  # ---------------------------------------------------------------------------
+  agent:
+    name: Agentenlauf (Adversary)
+    needs: vorbereitung
+    uses: ./.github/workflows/run-agent.yml
+    with:
+      role: adversary
+      issue_number: ${{ inputs.issue_number }}
+      prompt_extension: ${{ needs.vorbereitung.outputs.prompt_extension }}
+      max_turns: ${{ inputs.max_turns }}
+      core_ref: ${{ inputs.core_ref }}
+    secrets:
+      anthropic_api_key: ${{ secrets.anthropic_api_key }}
 
+  # ---------------------------------------------------------------------------
+  # Job 3: Ergebnis auswerten
+  # ---------------------------------------------------------------------------
+  auswertung:
+    name: Agentenlauf auswerten
+    needs: agent
+    if: always()
+    runs-on: ubuntu-latest
+    outputs:
+      pass: ${{ steps.auswertung.outputs.pass }}
+      findings_json: ${{ steps.auswertung.outputs.findings_json }}
+    steps:
       - name: Agentenlauf auswerten
         id: auswertung
-        if: always()
         env:
-          GATE_RESULT_JSON: ${{ steps.agent.outputs.result_json }}
-          GATE_SCHEMA_VALID: ${{ steps.agent.outputs.schema_valid }}
+          GATE_RESULT_JSON: ${{ needs.agent.outputs.result_json }}
+          GATE_SCHEMA_VALID: ${{ needs.agent.outputs.schema_valid }}
         run: |
           python3 - << 'PYEOF'
           import json

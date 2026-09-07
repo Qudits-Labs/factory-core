@@ -237,7 +237,7 @@ def main(argv: list[str]) -> int:
         ]
     )
 
-    schreibe_ausgabe("mechanical_pass", "true" if bestanden else "false")
+    schreibe_ausgabe("pass", "true" if bestanden else "false")
     schreibe_ausgabe("missing_entities", json.dumps(alle_fehlend))
     schreibe_ausgabe("stale_entities", json.dumps(alle_veraltet))
     schreibe_ausgabe("findings_json", json.dumps(befunde))
