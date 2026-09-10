@@ -46,6 +46,14 @@ on:
         required: false
         type: number
         default: 20
+      allowed_bots:
+        description: >
+          Komma-getrennte Login-Namen erlaubter Bot-Accounts. In einer Kette,
+          in der ein Agent den naechsten anstoesst, ist der Ausloeser ein Bot;
+          ohne Eintrag hier weist die Action den Lauf ab.
+        required: false
+        type: string
+        default: ''
       core_ref:
         description: SHA dieses Repositoriums fuer den Rollenrahmen
         required: true
@@ -62,8 +70,15 @@ on:
         value: ${{ jobs.auswertung.outputs.findings_json }}
     secrets:
       anthropic_api_key:
-        description: Anthropic API-Schluessel fuer den Agentenlauf
-        required: true
+        description: >
+          Anthropic API-Schluessel fuer den Agentenlauf. Genau eines von
+          anthropic_api_key und claude_code_oauth_token muss gesetzt sein.
+        required: false
+      claude_code_oauth_token:
+        description: >
+          OAuth-Token eines Claude-Abos fuer den Agentenlauf. Genau eines von
+          claude_code_oauth_token und anthropic_api_key muss gesetzt sein.
+        required: false
 
 permissions:
   contents: read
@@ -175,19 +190,27 @@ jobs:
   # ---------------------------------------------------------------------------
   # Job 2: Agentenlauf (Adversary, G8)
   # Ein wiederverwendbarer Workflow wird auf Job-Ebene eingebunden.
+  #
+  # Vollform mit Commit-SHA statt `./...` -- die Begruendung steht in
+  # transition.yml beim gleichnamigen Job. Kurzfassung: fuer den Aufruf ueber
+  # Repositoriumsgrenzen legt die GitHub-Dokumentation die Aufloesung der
+  # Kurzform nicht fest, und ein Zweigname waere beweglich. Der Canary misst
+  # diesen Zeiger gegen den Arbeitsstand (Schritt 11).
   # ---------------------------------------------------------------------------
   agent:
     name: Agentenlauf (Adversary, G8)
     needs: vorbereitung
-    uses: ./.github/workflows/run-agent.yml
+    uses: Qudits-Labs/factory-core/.github/workflows/run-agent.yml@12d2bf2ead99a71ca31584fcf6052c87fe5b6b38
     with:
       role: adversary
       issue_number: ${{ inputs.issue_number }}
       prompt_extension: ${{ needs.vorbereitung.outputs.scope_context }}
       max_turns: ${{ inputs.max_turns }}
+      allowed_bots: ${{ inputs.allowed_bots }}
       core_ref: ${{ inputs.core_ref }}
     secrets:
       anthropic_api_key: ${{ secrets.anthropic_api_key }}
+      claude_code_oauth_token: ${{ secrets.claude_code_oauth_token }}
 
   # ---------------------------------------------------------------------------
   # Job 3: Ergebnis auswerten

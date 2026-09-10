@@ -1,0 +1,2 @@
+hat_api_key=false
+hat_oauth_token=false

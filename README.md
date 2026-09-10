@@ -104,6 +104,78 @@ Einzelheiten stehen in [`docs/gate-vertrag.md`](docs/gate-vertrag.md).
 Der Kern kennt keine Schwellwerte. Er kennt die Stelle, an der einer steht, und
 was er bedeutet. Gesetzt wird er im Produktrepositorium.
 
+## Was ein Produktrepositorium mitbringen muss
+
+Der Kern läuft nicht allein. Was er nicht wissen kann und deshalb von aussen
+bekommt:
+
+**Eine Identität, die Folgeereignisse auslöst.** In aller Regel eine GitHub App.
+Das Standardtoken taugt dafür nicht: was damit gesetzt wird, löst keinen
+weiteren Workflow aus, und die Kette bliebe nach einem Schritt stehen.
+
+**Den Job, der das nächste Label setzt.** Der Kern gibt den Folgezustand als
+`next_label` zurück und setzt ihn nicht selbst. Der Grund ist eine Eigenschaft
+des Runners: ein App-Token entsteht zur Laufzeit, und ein maskierter Wert
+überlebt keinen Job-Output — er kommt als leere Zeichenkette an. Das Token muss
+deshalb in dem Job entstehen, in dem es gebraucht wird, und dieser Job liegt
+hier:
+
+```yaml
+# .github/workflows/uebergang.yml im Produktrepositorium
+jobs:
+  uebergang:
+    uses: Qudits-Labs/factory-core/.github/workflows/transition.yml@<SHA>
+    with:
+      issue_number: ${{ github.event.issue.number }}
+      new_label: ${{ github.event.label.name }}
+      actor_login: ${{ github.actor }}
+      human_gate_logins: ${{ vars.FACTORY_HUMAN_GATE_LOGINS }}
+      transition_identity_login: ${{ vars.FACTORY_BOT_LOGIN }}
+      allowed_bots: ${{ vars.FACTORY_ALLOWED_BOTS }}
+      core_ref: <SHA>
+    secrets:
+      transition_token: ${{ secrets.GITHUB_TOKEN }}
+      claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+
+  weiterschalten:
+    needs: uebergang
+    if: needs.uebergang.outputs.next_label != ''
+    runs-on: ubuntu-latest
+    steps:
+      # Token erzeugen und verwenden im selben Job -- ein Job-Output dazwischen
+      # würde den maskierten Wert leeren.
+      - id: app_token
+        uses: actions/create-github-app-token@<SHA>
+        with:
+          app-id: ${{ vars.FACTORY_APP_ID }}
+          private-key: ${{ secrets.FACTORY_APP_PRIVATE_KEY }}
+      - env:
+          GH_TOKEN: ${{ steps.app_token.outputs.token }}
+        run: |
+          gh issue edit "${{ github.event.issue.number }}" \
+            --remove-label "${{ github.event.label.name }}" \
+            --add-label "${{ needs.uebergang.outputs.next_label }}"
+```
+
+**`.factory/gate-config.yml`.** Profil, Schwellwerte, geschützte Pfade,
+Prüfaufträge im Wortlaut und die Pfade der Ergebnisdateien. Aufbau in
+`schemas/gate-config.schema.json`, Muster in `example/.factory/`.
+
+**Einen Zugang zum Modell.** Genau eines von `anthropic_api_key` und
+`claude_code_oauth_token`. Beide gesetzt wird abgewiesen, keines auch.
+
+**Den Login der App in `allowed_bots`.** In einer Kette, in der ein Lauf den
+nächsten anstösst, ist der Auslöser ein Bot. Ohne Eintrag weist die Action ihn
+ab, und zwar jeden.
+
+**Die Kennungen der Menschen mit Freigaberecht** als Repository-Variable, nicht
+in einer versionierten Datei.
+
+Was ein Produktrepositorium **nicht** mehr mitbringen muss: die Zuordnung von
+Statuslabel zu Rolle und die Folge der Zustände. Beide stehen als Standard im
+Kern. Wer davon abweicht, übergibt seine eigene Tabelle und ersetzt die
+Standardtabelle damit vollständig.
+
 ## Warum die Grenze eng ist
 
 Der Kern ist öffentlich, damit ein Repositorium ausserhalb der besitzenden
@@ -143,6 +215,11 @@ kennt, wäre keiner.
 - **Der Merge bleibt bei Menschen mit Schreibrecht.** Ein Regelwerk auf dem
   Hauptzweig verlangt einen Pull Request.
 - **Fremde Actions sind auf einen Commit-SHA gepinnt.**
+- **Ein Regler, den ein Ablauf anbietet, muss auch ankommen.** Führt ein
+  aufrufender Ablauf eine Eingabe, die der aufgerufene ebenfalls führt, und
+  reicht sie nicht weiter, bekommt der Aufrufer still den Standardwert. Was ein
+  aufgerufener Ablauf als `[durchgriff-pflicht]` markiert, muss jeder Aufrufer
+  zusätzlich selbst anbieten. Ein CI-Schritt prüft beides.
 
 ## Selbst prüfen
 
@@ -150,6 +227,7 @@ kennt, wäre keiner.
 python3 scripts/selftest.py
 python3 scripts/check_workflow_triggers.py .github/workflows
 python3 scripts/check_no_secrets.py .github/workflows
+python3 scripts/check_durchgriff.py .github/workflows
 ```
 
 Jede Prüfung wird an einem sauberen und an einem verletzenden Fall gemessen. Die

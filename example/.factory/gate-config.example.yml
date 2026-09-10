@@ -31,15 +31,36 @@ allowed_bots:
 
 max_attempts: 3
 
-# Statuslabel auf Rollenname. Rechts steht ausschliesslich ein Rollenname des
-# Kerns, nie ein Dateipfad: sonst liesse sich die Kette über diese Datei auf
-# einen fremden Workflow umlenken.
+# Statuslabel auf Rollenname, und was nach einem erledigten Zustand gilt.
+#
+# Beide Abschnitte sind optional. Genau diese Zuordnung steht als Standard im
+# Kern (scripts/factory_phasen.py); ein Repositorium mit der üblichen
+# Phasenfolge lässt beide Abschnitte weg und bekommt sie. Sie stehen hier
+# ausgeschrieben, damit sichtbar ist, wovon man abweicht — nicht, damit man sie
+# abschreibt.
+#
+# Wer einen Abschnitt setzt, ersetzt die Standardtabelle vollständig; es wird
+# nicht zusammengeführt. Wer eine Phase einfügt, schreibt also die ganze
+# Tabelle, nicht nur die neue Zeile.
+#
+# Rechts steht in `roles` ausschliesslich ein Rollenname des Kerns, nie ein
+# Dateipfad: sonst liesse sich die Kette über diese Datei auf einen fremden
+# Workflow umlenken.
 roles:
   "status:spec": solution-architect
   "status:spec-review": adversary
   "status:test-design": test-designer
   "status:ready-for-dev": implementer
   "status:code-review": adversary
+
+# `status:approved-spec` hat keine Rolle und steht deshalb oben nicht: dort
+# sitzt ein Mensch. `status:code-review` hat keinen Folgezustand, weil danach
+# der Merge kommt und der an einem Pull Request hängt, nicht an einem Label.
+next_states:
+  "status:spec": "status:spec-review"
+  "status:spec-review": "status:approved-spec"
+  "status:test-design": "status:ready-for-dev"
+  "status:ready-for-dev": "status:code-review"
 
 gates:
   story-lint:

@@ -8,6 +8,14 @@ name: Agenten-Lauf
 # eines Produktrepos und einer genehmigten GitHub App. Bis dahin ist er
 # nicht end-to-end pruefbar.
 #
+# Zugang zum Modell:
+# Der Aufrufer waehlt zwischen einem Anthropic-API-Schluessel und einem
+# OAuth-Token aus einem Claude-Abo. Die Action fuehrt beide als getrennte
+# Eingaben; ein OAuth-Token im Feld fuer den API-Schluessel wird abgewiesen.
+# Beide Geheimnisse sind deshalb deklariert und beide optional. Genau eines
+# muss gesetzt sein -- der Schritt "Zugangsart pruefen" stellt das fest,
+# bevor die Action startet, und liest dabei nur, ob ein Wert leer ist.
+#
 # Sicherheitsnotizen:
 # - github_token wird der Action NICHT uebergeben. Commits der Action loesen
 #   sonst keine Folge-Workflows aus.
@@ -43,7 +51,14 @@ on:
         type: number
         default: 20
       allowed_bots:
-        description: Komma-getrennte Login-Namen erlaubter Bot-Accounts
+        description: >
+          [durchgriff-pflicht] Komma-getrennte Login-Namen erlaubter
+          Bot-Accounts. Der Standardwert ist leer, und leer heisst: die Action
+          weist jeden Bot-Ausloeser ab. In einer Kette, in der ein Agent den
+          naechsten anstoesst, ist der Ausloeser immer ein Bot -- ohne diesen
+          Wert laeuft gar nichts an. Jeder Ablauf, der hierher aufruft, muss
+          die Eingabe deshalb selbst anbieten und weiterreichen; geprueft von
+          scripts/check_durchgriff.py.
         required: false
         type: string
         default: ''
@@ -69,8 +84,19 @@ on:
         value: ${{ jobs.agent.outputs.status }}
     secrets:
       anthropic_api_key:
-        description: Anthropic API-Schluessel fuer den Agentenlauf
-        required: true
+        description: >
+          [durchgriff-pflicht] Anthropic API-Schluessel fuer den Agentenlauf.
+          Genau eines von anthropic_api_key und claude_code_oauth_token muss
+          gesetzt sein.
+        required: false
+      claude_code_oauth_token:
+        description: >
+          [durchgriff-pflicht] OAuth-Token eines Claude-Abos fuer den
+          Agentenlauf. Genau eines von claude_code_oauth_token und
+          anthropic_api_key muss gesetzt sein. Ein Ablauf, der nur den
+          API-Schluessel weiterreicht, sperrt jeden aus, der seinen Zugang
+          ueber ein Abo fuehrt.
+        required: false
 
 permissions:
   contents: write
@@ -95,6 +121,17 @@ jobs:
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: '3.12'
+
+      # -----------------------------------------------------------------------
+      # Schritt 0: Zugangsart pruefen, bevor irgendetwas laeuft
+      # Der Ausdruck wertet nur aus, ob ein Wert leer ist. Das Geheimnis selbst
+      # verlaesst den Ausdruck nicht und erreicht das Skript nie.
+      # -----------------------------------------------------------------------
+      - name: Zugangsart pruefen
+        env:
+          GATE_HAT_API_KEY: ${{ secrets.anthropic_api_key != '' && '1' || '' }}
+          GATE_HAT_OAUTH_TOKEN: ${{ secrets.claude_code_oauth_token != '' && '1' || '' }}
+        run: python3 scripts/pruefe_zugangsart.py
 
       # -----------------------------------------------------------------------
       # Schritt 1: Rolle validieren (Python, strukturell geprueft)
@@ -175,7 +212,12 @@ jobs:
         id: agent_lauf
         uses: anthropics/claude-code-action@9c5ddab2e6d17b83ea679153b31f1d5f023cf636 # v1.0.217
         with:
+          # Beide Felder werden immer uebergeben. Das nicht gewaehlte ist leer;
+          # die Action fuehrt beide als optionale Eingaben und weicht bei einem
+          # leeren Wert auf die Umgebung aus. Der Schritt "Zugangsart pruefen"
+          # hat vorher sichergestellt, dass genau eines gefuellt ist.
           anthropic_api_key: ${{ secrets.anthropic_api_key }}
+          claude_code_oauth_token: ${{ secrets.claude_code_oauth_token }}
           prompt_file: /tmp/agent_prompt.md
           max_turns: ${{ inputs.max_turns }}
           allowed_bots: ${{ inputs.allowed_bots }}

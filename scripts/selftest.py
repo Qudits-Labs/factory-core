@@ -133,6 +133,19 @@ FAELLE = [
         "Ausdruck in uses: und Reusable-Workflow-als-Step werden abgewiesen",
     ),
     (
+        "check_durchgriff.py",
+        SAUBER / "durchgriff",
+        0,
+        "der Aufrufer reicht jede gemeinsame und jede pflichtige Eingabe weiter",
+    ),
+    (
+        "check_durchgriff.py",
+        VERSTOSS / "durchgriff",
+        1,
+        "ein angebotener Regler ohne Durchgriff und ein nicht gefuehrtes"
+        " Pflicht-Secret werden abgewiesen",
+    ),
+    (
         "transition_check.py",
         SAUBER / "transition-check",
         0,
@@ -143,6 +156,66 @@ FAELLE = [
         VERSTOSS / "transition-check",
         1,
         "unbekannte Identitaet wird abgewiesen",
+    ),
+    (
+        "transition_check.py",
+        SAUBER / "transition-check-standard",
+        0,
+        "ohne uebergebene Tabelle gilt die Standardfolge des Kerns",
+    ),
+    (
+        "transition_check.py",
+        SAUBER / "transition-check-code-review",
+        0,
+        "Standardtabelle: status:code-review laesst den Adversary arbeiten",
+    ),
+    (
+        "folgezustand.py",
+        SAUBER / "folgezustand",
+        0,
+        "Standardfolge: auf status:spec folgt status:spec-review",
+    ),
+    (
+        "folgezustand.py",
+        SAUBER / "folgezustand-vor-code-review",
+        0,
+        "Standardfolge: auf status:ready-for-dev folgt status:code-review",
+    ),
+    (
+        "folgezustand.py",
+        SAUBER / "folgezustand-kettenende",
+        0,
+        "nach status:code-review kommt der Merge -- kein Folgezustand",
+    ),
+    (
+        "folgezustand.py",
+        SAUBER / "folgezustand-ersetzt",
+        0,
+        "eine uebergebene Tabelle ersetzt die Standardfolge",
+    ),
+    (
+        "folgezustand.py",
+        VERSTOSS / "folgezustand",
+        1,
+        "ein Zustand, der auf sich selbst zeigt, wird abgewiesen",
+    ),
+    (
+        "pruefe_zugangsart.py",
+        SAUBER / "zugangsart",
+        0,
+        "genau eine Zugangsart zum Modell gesetzt",
+    ),
+    (
+        "pruefe_zugangsart.py",
+        VERSTOSS / "zugangsart",
+        1,
+        "API-Schluessel und OAuth-Token gleichzeitig werden abgewiesen",
+    ),
+    (
+        "pruefe_zugangsart.py",
+        VERSTOSS / "zugangsart-keine",
+        1,
+        "gar keine Zugangsart wird abgewiesen",
     ),
 ]
 

@@ -1,0 +1,29 @@
+name: Fixture -- Aufrufer, der alles weiterreicht
+
+# Der saubere Fall: der Aufrufer bietet die durchgriffspflichtige Eingabe
+# selbst an und uebergibt sie. `max_turns` fuehrt er nicht, also muss er es
+# auch nicht uebergeben -- die Regel greift nur bei gemeinsamen Namen.
+
+on:
+  workflow_call:
+    inputs:
+      allowed_bots:
+        description: Komma-getrennte Login-Namen erlaubter Bot-Accounts
+        required: false
+        type: string
+        default: ''
+    secrets:
+      modell_zugang:
+        description: Zugang zum Modell
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  weiter:
+    uses: Beispiel-Eigner/Beispiel-Repo/.github/workflows/aufgerufen-durchgriff.yml@1111111111111111111111111111111111111111
+    with:
+      allowed_bots: ${{ inputs.allowed_bots }}
+    secrets:
+      modell_zugang: ${{ secrets.modell_zugang }}
