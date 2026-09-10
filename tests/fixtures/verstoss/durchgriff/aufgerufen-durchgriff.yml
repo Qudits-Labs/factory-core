@@ -1,0 +1,34 @@
+name: Fixture -- aufgerufener Ablauf mit durchgriffspflichtiger Eingabe
+
+# Kein echter Ablauf. Diese Datei liegt ausserhalb von .github/workflows und
+# wird nie ausgefuehrt; sie ist die Messlatte fuer check_durchgriff.py.
+
+on:
+  workflow_call:
+    inputs:
+      allowed_bots:
+        description: >
+          [durchgriff-pflicht] Leer heisst: jeder Bot-Ausloeser wird
+          abgewiesen. Ein Aufrufer muss die Eingabe selbst fuehren und
+          weiterreichen.
+        required: false
+        type: string
+        default: ''
+      max_turns:
+        description: Gewoehnliche Eingabe ohne Durchgriffspflicht
+        required: false
+        type: number
+        default: 20
+    secrets:
+      modell_zugang:
+        description: '[durchgriff-pflicht] Zugang zum Modell'
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  arbeit:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Fixture"

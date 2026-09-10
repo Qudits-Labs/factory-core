@@ -522,6 +522,32 @@ def pruefe_workflow_struktur() -> None:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# 10. Durchgriff der Eingaben in den echten Workflows
+#     Der Selbsttest misst check_durchgriff.py an Fixtures. Hier laeuft dieselbe
+#     Pruefung gegen die Abläufe dieses Repositoriums — eine Regel, die nur an
+#     Fixtures gilt und nicht am eigenen Bestand, ist Zierde.
+# ─────────────────────────────────────────────────────────────────────────────
+def pruefe_durchgriff() -> None:
+    skript = SCRIPTS / "check_durchgriff.py"
+    if not skript.exists():
+        _uebersprungen_("durchgriff", f"{skript.name} fehlt")
+        return
+    if not WORKFLOWS.is_dir():
+        _uebersprungen_("durchgriff", ".github/workflows/ fehlt")
+        return
+
+    lauf = _lauf(skript, str(WORKFLOWS))
+    if lauf.returncode == 0:
+        _ok_(f"durchgriff — {lauf.stdout.strip().splitlines()[-1]}")
+    else:
+        _fehler_(
+            "durchgriff",
+            f"Exit {lauf.returncode} statt 0. "
+            + (lauf.stderr.strip()[:400] or lauf.stdout.strip()[:400]),
+        )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Hauptprogramm
 # ─────────────────────────────────────────────────────────────────────────────
 def main() -> int:
@@ -562,6 +588,10 @@ def main() -> int:
 
     print("Schritt 9: Workflow-Struktur (check_workflow_struktur.py)")
     pruefe_workflow_struktur()
+    print()
+
+    print("Schritt 10: Durchgriff der Eingaben (check_durchgriff.py)")
+    pruefe_durchgriff()
     print()
 
     gesamt = len(_ok) + len(_fehler) + len(_uebersprungen)

@@ -86,6 +86,26 @@ on:
         required: false
         type: number
         default: 3
+      max_turns:
+        description: Maximale Anzahl Agenten-Turns je Lauf
+        required: false
+        type: number
+        default: 20
+      prompt_extension:
+        description: >
+          Optionale Prompt-Erweiterung, die an den Rollenrahmen angehaengt
+          wird. Kommt als Zeichenkette, nicht als Dateipfad.
+        required: false
+        type: string
+        default: ''
+      allowed_bots:
+        description: >
+          Komma-getrennte Login-Namen erlaubter Bot-Accounts. In einer Kette,
+          in der ein Agent den naechsten anstoesst, ist der Ausloeser ein Bot;
+          ohne Eintrag hier weist die Action den Lauf ab.
+        required: false
+        type: string
+        default: ''
       core_ref:
         description: SHA dieses Repositoriums fuer den Rollenrahmen
         required: true
@@ -115,8 +135,15 @@ on:
           ausdruecklich keinen weiteren Workflow ausloesen.
         required: true
       anthropic_api_key:
-        description: Anthropic API-Schluessel fuer den Agentenlauf
-        required: true
+        description: >
+          Anthropic API-Schluessel fuer den Agentenlauf. Genau eines von
+          anthropic_api_key und claude_code_oauth_token muss gesetzt sein.
+        required: false
+      claude_code_oauth_token:
+        description: >
+          OAuth-Token eines Claude-Abos fuer den Agentenlauf. Genau eines von
+          claude_code_oauth_token und anthropic_api_key muss gesetzt sein.
+        required: false
 
 permissions:
   issues: write
@@ -263,8 +290,12 @@ jobs:
       role: ${{ needs.pruefung.outputs.role_name }}
       issue_number: ${{ inputs.issue_number }}
       core_ref: ${{ inputs.core_ref }}
+      max_turns: ${{ inputs.max_turns }}
+      prompt_extension: ${{ inputs.prompt_extension }}
+      allowed_bots: ${{ inputs.allowed_bots }}
     secrets:
       anthropic_api_key: ${{ secrets.anthropic_api_key }}
+      claude_code_oauth_token: ${{ secrets.claude_code_oauth_token }}
 
   # ---------------------------------------------------------------------------
   # Job 3: Ergebnis pruefen und den Folgezustand bestimmen

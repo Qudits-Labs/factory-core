@@ -51,7 +51,14 @@ on:
         type: number
         default: 20
       allowed_bots:
-        description: Komma-getrennte Login-Namen erlaubter Bot-Accounts
+        description: >
+          [durchgriff-pflicht] Komma-getrennte Login-Namen erlaubter
+          Bot-Accounts. Der Standardwert ist leer, und leer heisst: die Action
+          weist jeden Bot-Ausloeser ab. In einer Kette, in der ein Agent den
+          naechsten anstoesst, ist der Ausloeser immer ein Bot -- ohne diesen
+          Wert laeuft gar nichts an. Jeder Ablauf, der hierher aufruft, muss
+          die Eingabe deshalb selbst anbieten und weiterreichen; geprueft von
+          scripts/check_durchgriff.py.
         required: false
         type: string
         default: ''
@@ -78,13 +85,17 @@ on:
     secrets:
       anthropic_api_key:
         description: >
-          Anthropic API-Schluessel fuer den Agentenlauf. Genau eines von
-          anthropic_api_key und claude_code_oauth_token muss gesetzt sein.
+          [durchgriff-pflicht] Anthropic API-Schluessel fuer den Agentenlauf.
+          Genau eines von anthropic_api_key und claude_code_oauth_token muss
+          gesetzt sein.
         required: false
       claude_code_oauth_token:
         description: >
-          OAuth-Token eines Claude-Abos fuer den Agentenlauf. Genau eines von
-          claude_code_oauth_token und anthropic_api_key muss gesetzt sein.
+          [durchgriff-pflicht] OAuth-Token eines Claude-Abos fuer den
+          Agentenlauf. Genau eines von claude_code_oauth_token und
+          anthropic_api_key muss gesetzt sein. Ein Ablauf, der nur den
+          API-Schluessel weiterreicht, sperrt jeden aus, der seinen Zugang
+          ueber ein Abo fuehrt.
         required: false
 
 permissions:

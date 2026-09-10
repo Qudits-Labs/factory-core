@@ -133,6 +133,19 @@ FAELLE = [
         "Ausdruck in uses: und Reusable-Workflow-als-Step werden abgewiesen",
     ),
     (
+        "check_durchgriff.py",
+        SAUBER / "durchgriff",
+        0,
+        "der Aufrufer reicht jede gemeinsame und jede pflichtige Eingabe weiter",
+    ),
+    (
+        "check_durchgriff.py",
+        VERSTOSS / "durchgriff",
+        1,
+        "ein angebotener Regler ohne Durchgriff und ein nicht gefuehrtes"
+        " Pflicht-Secret werden abgewiesen",
+    ),
+    (
         "transition_check.py",
         SAUBER / "transition-check",
         0,

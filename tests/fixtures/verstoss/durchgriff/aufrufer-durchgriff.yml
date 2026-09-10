@@ -1,0 +1,28 @@
+name: Fixture -- Aufrufer mit fehlendem Durchgriff
+
+# Zwei Verstoesse in einer Datei, weil es zwei verschiedene sind:
+#
+# 1. `allowed_bots` fuehrt der Aufrufer selbst, reicht es aber nicht weiter.
+#    Wer den Wert setzt, bekommt still den Standardwert des aufgerufenen
+#    Ablaufs -- der Regler ist da und wirkt nicht.
+# 2. `modell_zugang` ist im aufgerufenen Ablauf durchgriffspflichtig, und der
+#    Aufrufer fuehrt es gar nicht erst. Ein Produktrepositorium kann den Wert
+#    damit nirgends setzen.
+
+on:
+  workflow_call:
+    inputs:
+      allowed_bots:
+        description: Komma-getrennte Login-Namen erlaubter Bot-Accounts
+        required: false
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  weiter:
+    uses: Beispiel-Eigner/Beispiel-Repo/.github/workflows/aufgerufen-durchgriff.yml@1111111111111111111111111111111111111111
+    with:
+      max_turns: 8

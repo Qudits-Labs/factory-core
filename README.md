@@ -143,6 +143,11 @@ kennt, wäre keiner.
 - **Der Merge bleibt bei Menschen mit Schreibrecht.** Ein Regelwerk auf dem
   Hauptzweig verlangt einen Pull Request.
 - **Fremde Actions sind auf einen Commit-SHA gepinnt.**
+- **Ein Regler, den ein Ablauf anbietet, muss auch ankommen.** Führt ein
+  aufrufender Ablauf eine Eingabe, die der aufgerufene ebenfalls führt, und
+  reicht sie nicht weiter, bekommt der Aufrufer still den Standardwert. Was ein
+  aufgerufener Ablauf als `[durchgriff-pflicht]` markiert, muss jeder Aufrufer
+  zusätzlich selbst anbieten. Ein CI-Schritt prüft beides.
 
 ## Selbst prüfen
 
@@ -150,6 +155,7 @@ kennt, wäre keiner.
 python3 scripts/selftest.py
 python3 scripts/check_workflow_triggers.py .github/workflows
 python3 scripts/check_no_secrets.py .github/workflows
+python3 scripts/check_durchgriff.py .github/workflows
 ```
 
 Jede Prüfung wird an einem sauberen und an einem verletzenden Fall gemessen. Die
