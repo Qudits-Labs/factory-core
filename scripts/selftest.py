@@ -144,6 +144,24 @@ FAELLE = [
         1,
         "unbekannte Identitaet wird abgewiesen",
     ),
+    (
+        "pruefe_zugangsart.py",
+        SAUBER / "zugangsart",
+        0,
+        "genau eine Zugangsart zum Modell gesetzt",
+    ),
+    (
+        "pruefe_zugangsart.py",
+        VERSTOSS / "zugangsart",
+        1,
+        "API-Schluessel und OAuth-Token gleichzeitig werden abgewiesen",
+    ),
+    (
+        "pruefe_zugangsart.py",
+        VERSTOSS / "zugangsart-keine",
+        1,
+        "gar keine Zugangsart wird abgewiesen",
+    ),
 ]
 
 
