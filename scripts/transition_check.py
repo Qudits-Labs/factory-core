@@ -10,6 +10,11 @@ Zweck:
     als Werte erlaubt. Ein freier Pfad als Wert wuerde die Zustandsmaschine
     umleitbar machen.
 
+    Wird keine Tabelle uebergeben, gilt die Standardfolge aus
+    `factory_phasen.py`. Ein Produktrepositorium, das ihr folgt, muss die
+    Abbildung nicht mitbringen; eines, das abweicht, uebergibt seine eigene
+    und ersetzt die Standardtabelle damit vollstaendig.
+
     Akteur-Logik:
       - Transition-Identitaet: regulaerer Uebergang
       - Login aus human_gate_logins: erlaubt, wird als menschlicher Eingriff
@@ -27,7 +32,14 @@ Aufruf (Fixture-Modus fuer Tests):
                                new_label=status:in-review
                                max_attempts=3
                                current_attempts=0
-      role_label_map.json  - JSON-Objekt: label -> rollenname
+                               erwartete_rolle=solution-architect   (optional)
+      role_label_map.json  - optional; JSON-Objekt label -> rollenname.
+                             Fehlt die Datei, gilt die Standardtabelle.
+
+    Steht `erwartete_rolle` in der config.txt, prueft das Skript die
+    bestimmte Rolle dagegen. Ein leerer Wert ist eine echte Erwartung: dieses
+    Label darf keine Rolle haben. Damit ist die Standardtabelle selbst
+    gemessen und nicht nur ihre Lesbarkeit.
 
 Aufruf (Produktiv via GitHub Actions):
     Liest aus Umgebungsvariablen:
@@ -36,7 +48,7 @@ Aufruf (Produktiv via GitHub Actions):
       GATE_HUMAN_GATE_LOGINS       (komma-getrennt)
       GATE_NEW_LABEL
       GATE_MAX_ATTEMPTS            (Default: 3)
-      GATE_ROLE_LABEL_MAP_JSON
+      GATE_ROLE_LABEL_MAP_JSON     (leer: Standardtabelle)
       GATE_CURRENT_ATTEMPTS        (Default: 0)
     Schreibt Outputs in GITHUB_OUTPUT.
 
@@ -52,16 +64,16 @@ import os
 import sys
 from pathlib import Path
 
-ERLAUBTE_ROLLENNAMEN: frozenset[str] = frozenset(
-    {
-        "intake-coordinator",
-        "solution-architect",
-        "test-designer",
-        "implementer",
-        "adversary",
-        "deployer",
-    }
+# Die Rollenliste und die Standardtabelle stehen in factory_phasen.py, damit
+# es sie nur einmal gibt. Zwei Kopien derselben Liste laufen auseinander.
+from factory_phasen import (
+    ERLAUBTE_ROLLENNAMEN,
+    STANDARD_ROLLE_JE_LABEL,
+    lade_map,
+    validiere_rollen_map,
 )
+
+__all__ = ["ERLAUBTE_ROLLENNAMEN"]
 
 
 def schreibe_ausgabe(schluessel: str, wert: str) -> None:
@@ -71,20 +83,6 @@ def schreibe_ausgabe(schluessel: str, wert: str) -> None:
             f.write(f"{schluessel}={wert}\n")
     else:
         print(f"  {schluessel}: {wert}")
-
-
-def validiere_role_label_map(
-    role_label_map: dict[str, str],
-) -> list[str]:
-    """Gibt Fehlermeldungen fuer ungueltige Werte zurueck."""
-    fehler: list[str] = []
-    for label, rollenname in role_label_map.items():
-        if rollenname not in ERLAUBTE_ROLLENNAMEN:
-            fehler.append(
-                f"Label {label!r} -> ungueltige Rolle {rollenname!r}."
-                f" Erlaubt: {', '.join(sorted(ERLAUBTE_ROLLENNAMEN))}"
-            )
-    return fehler
 
 
 def pruefe_akteur(
@@ -111,7 +109,12 @@ def pruefe_versuche(aktuell: int, maximum: int) -> tuple[bool, str]:
     return True, f"Versuch {aktuell + 1}/{maximum}"
 
 
-def lade_fixture(verzeichnis: Path) -> tuple[dict[str, str], dict[str, str]]:
+def lade_fixture(verzeichnis: Path) -> tuple[dict[str, str], str]:
+    """Gibt (config, unveraenderte Rollentabelle als Text) zurueck.
+
+    Fehlt `role_label_map.json`, bleibt der Text leer und die Standardtabelle
+    aus factory_phasen.py gilt.
+    """
     config_datei = verzeichnis / "config.txt"
     map_datei = verzeichnis / "role_label_map.json"
 
@@ -122,21 +125,22 @@ def lade_fixture(verzeichnis: Path) -> tuple[dict[str, str], dict[str, str]]:
                 k, v = zeile.split("=", 1)
                 config[k.strip()] = v.strip()
 
-    role_label_map: dict[str, str] = {}
-    if map_datei.exists():
-        role_label_map = json.loads(map_datei.read_text(encoding="utf-8"))
+    map_roh = map_datei.read_text(encoding="utf-8") if map_datei.exists() else ""
 
-    return config, role_label_map
+    return config, map_roh
 
 
 def main(argv: list[str]) -> int:
+    erwartete_rolle: str | None = None
+
     if argv and Path(argv[0]).is_dir():
         try:
-            config, role_label_map = lade_fixture(Path(argv[0]))
-        except (json.JSONDecodeError, OSError) as e:
+            config, map_roh = lade_fixture(Path(argv[0]))
+        except OSError as e:
             print(f"FEHLER: Fixture konnte nicht geladen werden: {e}", file=sys.stderr)
             return 2
 
+        erwartete_rolle = config.get("erwartete_rolle")
         actor = config.get("actor_login", "")
         transition_identity = config.get("transition_identity_login", "")
         human_gate_logins = [
@@ -160,15 +164,7 @@ def main(argv: list[str]) -> int:
             if lbl.strip()
         ]
         new_label = os.environ.get("GATE_NEW_LABEL", "")
-        map_roh = os.environ.get("GATE_ROLE_LABEL_MAP_JSON", "{}")
-        try:
-            role_label_map = json.loads(map_roh)
-        except json.JSONDecodeError as e:
-            print(
-                f"FEHLER: GATE_ROLE_LABEL_MAP_JSON ist kein gueltiges JSON: {e}",
-                file=sys.stderr,
-            )
-            return 2
+        map_roh = os.environ.get("GATE_ROLE_LABEL_MAP_JSON", "")
         try:
             max_attempts = int(os.environ.get("GATE_MAX_ATTEMPTS", "3"))
             current_attempts = int(os.environ.get("GATE_CURRENT_ATTEMPTS", "0"))
@@ -184,8 +180,22 @@ def main(argv: list[str]) -> int:
         )
         return 2
 
-    # Rollenabbildung validieren
-    map_fehler = validiere_role_label_map(role_label_map)
+    # Rollenabbildung laden. Ohne Uebergabe gilt die Standardfolge aus
+    # factory_phasen.py -- ein Produktrepositorium, das ihr folgt, muss die
+    # Tabelle nicht mitbringen.
+    try:
+        role_label_map, map_herkunft = lade_map(map_roh, STANDARD_ROLLE_JE_LABEL)
+    except json.JSONDecodeError as e:
+        print(
+            f"FEHLER: Die Rollentabelle ist kein gueltiges JSON: {e}",
+            file=sys.stderr,
+        )
+        return 2
+    except ValueError as e:
+        print(f"FEHLER: {e}", file=sys.stderr)
+        return 2
+
+    map_fehler = validiere_rollen_map(role_label_map)
     if map_fehler:
         for f in map_fehler:
             print(f"FEHLER: {f}", file=sys.stderr)
@@ -212,8 +222,22 @@ def main(argv: list[str]) -> int:
         else:
             print(f"  BEFUND: {meldung}", file=sys.stderr)
 
+    print(f"  Rollentabelle: {map_herkunft}")
     if rollenname:
         print(f"  Rolle: {rollenname}")
+
+    # Erwartungspruefung im Fixture-Modus. Ohne sie misst kein Test, was in der
+    # Standardtabelle tatsaechlich steht -- ein stillschweigend entfernter
+    # Eintrag bliebe unbemerkt, weil ein unbekanntes Label nur eine leere Rolle
+    # ergibt und keinen Fehler. Massgeblich ist, ob der Schluessel dasteht:
+    # `erwartete_rolle=` ohne Wert heisst, dieses Label darf keine Rolle haben.
+    if erwartete_rolle is not None and rollenname != erwartete_rolle:
+        print(
+            f"FEHLER: Erwartet war Rolle {erwartete_rolle!r}, bestimmt wurde"
+            f" {rollenname!r}.",
+            file=sys.stderr,
+        )
+        return 1
 
     return 0 if bestanden else 1
 

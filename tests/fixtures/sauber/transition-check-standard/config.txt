@@ -1,0 +1,7 @@
+actor_login=factory-bot
+transition_identity_login=factory-bot
+human_gate_logins=alice,bob
+new_label=status:test-design
+max_attempts=3
+current_attempts=0
+erwartete_rolle=test-designer

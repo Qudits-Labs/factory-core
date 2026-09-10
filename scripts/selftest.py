@@ -145,6 +145,48 @@ FAELLE = [
         "unbekannte Identitaet wird abgewiesen",
     ),
     (
+        "transition_check.py",
+        SAUBER / "transition-check-standard",
+        0,
+        "ohne uebergebene Tabelle gilt die Standardfolge des Kerns",
+    ),
+    (
+        "transition_check.py",
+        SAUBER / "transition-check-code-review",
+        0,
+        "Standardtabelle: status:code-review laesst den Adversary arbeiten",
+    ),
+    (
+        "folgezustand.py",
+        SAUBER / "folgezustand",
+        0,
+        "Standardfolge: auf status:spec folgt status:spec-review",
+    ),
+    (
+        "folgezustand.py",
+        SAUBER / "folgezustand-vor-code-review",
+        0,
+        "Standardfolge: auf status:ready-for-dev folgt status:code-review",
+    ),
+    (
+        "folgezustand.py",
+        SAUBER / "folgezustand-kettenende",
+        0,
+        "nach status:code-review kommt der Merge -- kein Folgezustand",
+    ),
+    (
+        "folgezustand.py",
+        SAUBER / "folgezustand-ersetzt",
+        0,
+        "eine uebergebene Tabelle ersetzt die Standardfolge",
+    ),
+    (
+        "folgezustand.py",
+        VERSTOSS / "folgezustand",
+        1,
+        "ein Zustand, der auf sich selbst zeigt, wird abgewiesen",
+    ),
+    (
         "pruefe_zugangsart.py",
         SAUBER / "zugangsart",
         0,

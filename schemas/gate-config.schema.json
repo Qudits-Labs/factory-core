@@ -148,7 +148,7 @@
     },
     "roles": {
       "type": "object",
-      "description": "Zuordnung von Statuslabel zu Rollenname. Die rechte Seite ist ausschliesslich ein Rollenname des Kerns, nie ein Dateipfad. Ein Label, das einen freien Workflow-Pfad benennen könnte, wäre ein Weg, die Kette über eine Konfigurationsdatei auf einen fremden Workflow umzulenken.",
+      "description": "Optional. Zuordnung von Statuslabel zu Rollenname. Fehlt der Abschnitt, gilt die Standardtabelle des Kerns aus scripts/factory_phasen.py; ein Repositorium mit der üblichen Phasenfolge muss hier nichts eintragen. Ist er vorhanden, ersetzt er die Standardtabelle vollständig — es wird nicht zusammengeführt. Die rechte Seite ist ausschliesslich ein Rollenname des Kerns, nie ein Dateipfad. Ein Label, das einen freien Workflow-Pfad benennen könnte, wäre ein Weg, die Kette über eine Konfigurationsdatei auf einen fremden Workflow umzulenken.",
       "additionalProperties": {
         "enum": [
           "intake-coordinator",
@@ -158,6 +158,14 @@
           "adversary",
           "deployer"
         ]
+      }
+    },
+    "next_states": {
+      "type": "object",
+      "description": "Optional. Zuordnung von erledigtem Statuslabel zum Folgezustand. Fehlt der Abschnitt, gilt die Standardfolge des Kerns; ist er vorhanden, ersetzt er sie vollständig. Ein Label ohne Eintrag hat keinen Folgezustand — dort hält die Kette an, und das ist der Regelfall an einem menschlichen Gate und am Ende der Kette. Ein Label, das auf sich selbst zeigt, wird abgewiesen: es liesse die Kette nach einem Schritt stehen.",
+      "additionalProperties": {
+        "type": "string",
+        "minLength": 1
       }
     }
   },
