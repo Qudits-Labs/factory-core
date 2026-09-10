@@ -23,7 +23,13 @@ jobs:
     name: Canary-Selbsttest
     runs-on: ubuntu-latest
     steps:
+      # Volle Historie: Schritt 11 des Canary misst den Commit-SHA, auf den ein
+      # Workflow dieses Repositoriums zeigt, gegen den Arbeitsstand. Eine flache
+      # Kopie kennt diesen Commit nicht, und der Fall waere nur noch
+      # uebersprungen statt gemessen.
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: '3.12'

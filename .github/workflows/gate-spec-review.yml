@@ -136,11 +136,17 @@ jobs:
   # ---------------------------------------------------------------------------
   # Job 2: Agentenlauf (Adversary)
   # Ein wiederverwendbarer Workflow wird auf Job-Ebene eingebunden.
+  #
+  # Vollform mit Commit-SHA statt `./...` -- die Begruendung steht in
+  # transition.yml beim gleichnamigen Job. Kurzfassung: fuer den Aufruf ueber
+  # Repositoriumsgrenzen legt die GitHub-Dokumentation die Aufloesung der
+  # Kurzform nicht fest, und ein Zweigname waere beweglich. Der Canary misst
+  # diesen Zeiger gegen den Arbeitsstand (Schritt 11).
   # ---------------------------------------------------------------------------
   agent:
     name: Agentenlauf (Adversary)
     needs: vorbereitung
-    uses: ./.github/workflows/run-agent.yml
+    uses: Qudits-Labs/factory-core/.github/workflows/run-agent.yml@12d2bf2ead99a71ca31584fcf6052c87fe5b6b38
     with:
       role: adversary
       issue_number: ${{ inputs.issue_number }}

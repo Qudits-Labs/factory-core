@@ -280,12 +280,30 @@ jobs:
   # ---------------------------------------------------------------------------
   # Job 2: Agentenlauf -- nur wenn der Uebergang erlaubt ist
   # Ein wiederverwendbarer Workflow wird auf Job-Ebene eingebunden.
+  #
+  # Vollform statt `./.github/workflows/run-agent.yml`: Dieser Ablauf wird ueber
+  # Repositoriumsgrenzen hinweg aufgerufen. Die GitHub-Dokumentation beschreibt
+  # `./` als Form fuer einen Aufruf innerhalb desselben Repositoriums -- der
+  # aufgerufene Ablauf stammt dann aus demselben Commit wie der aufrufende. Fuer
+  # den verschachtelten Aufruf ueber Repositoriumsgrenzen sagt sie nicht, worauf
+  # sich das bezieht. Die Vollform ist belegbar, die Kurzform nur wahrscheinlich.
+  #
+  # Der SHA zeigt auf den Commit, der die hier gueltige Fassung von
+  # run-agent.yml eingefuehrt hat. Ein Zweigname stuende bequemer, wuerde aber
+  # die Zusage dieses Repositoriums brechen: ein Produktrepositorium pinnt
+  # diesen Kern auf einen SHA und bekaeme ueber einen beweglichen inneren
+  # Zeiger doch wieder eine wechselnde Fassung untergeschoben.
+  #
+  # Der Preis ist ein zweiter Commit, wenn run-agent.yml sich aendert: erst die
+  # Aenderung, dann der Zeiger darauf. Damit ein vergessener zweiter Commit
+  # nicht unbemerkt bleibt, misst der Canary diesen Zeiger gegen den
+  # Arbeitsstand -- canary/run_canary.py, Schritt 11.
   # ---------------------------------------------------------------------------
   agent:
     name: Agenten-Lauf
     needs: pruefung
     if: needs.pruefung.outputs.allowed == 'true'
-    uses: ./.github/workflows/run-agent.yml
+    uses: Qudits-Labs/factory-core/.github/workflows/run-agent.yml@12d2bf2ead99a71ca31584fcf6052c87fe5b6b38
     with:
       role: ${{ needs.pruefung.outputs.role_name }}
       issue_number: ${{ inputs.issue_number }}

@@ -44,6 +44,17 @@ Produkts. Er legt keine Dateien an und schreibt in kein Produktrepositorium.
 - Jeder `workflow_call`-Workflow unter `.github/workflows/gate-*.yml`
   deklariert `pass` und `findings_json` als Ausgaben. Das ist die
   Vertragstreue-Prüfung nach `docs/gate-vertrag.md`.
+- Jeder Ablauf, der einen anderen aufruft, reicht die Eingaben weiter, die
+  beide führen, und dazu alles, was der aufgerufene als
+  `[durchgriff-pflicht]` markiert. Sonst bietet er einen Regler an, der
+  nichts bewirkt.
+- Jeder Verweis auf einen Workflow dieses Repositoriums steht in der Vollform
+  mit Commit-SHA, und der SHA trägt dieselbe Fassung der Zieldatei wie der
+  Arbeitsstand. Damit fällt auf, wenn nach einer Änderung an einem
+  aufgerufenen Ablauf der zweite Commit vergessen wurde, der den Zeiger
+  nachzieht. Lässt sich der SHA lokal nicht auflösen — flache Kopie —, wird
+  dieser zweite Teil sichtbar übersprungen; deshalb holt `canary.yml` die
+  volle Historie.
 
 ---
 

@@ -26,6 +26,7 @@ Aufruf:
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -548,6 +549,145 @@ def pruefe_durchgriff() -> None:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# 11. Verweise auf eigene Workflows
+#     Ein Workflow dieses Repositoriums, der einen anderen aufruft, muss die
+#     Vollform mit einem Commit-SHA verwenden. Zwei Gruende:
+#
+#     Die Kurzform `./.github/workflows/…` ist laut GitHub-Dokumentation die
+#     Form für einen Aufruf innerhalb desselben Repositoriums; für den Aufruf
+#     über Repositoriumsgrenzen legt die Dokumentation nicht fest, wo sie
+#     aufgelöst wird, und die Beispiele für verschachtelte Aufrufe nutzen
+#     durchgehend die Vollform.
+#
+#     Ein Zweigname als Ziel wäre beweglich. Ein Produktrepositorium pinnt
+#     diesen Kern auf einen SHA; ein beweglicher Zeiger im Inneren würde
+#     diese Zusage aushebeln.
+#
+#     Zusätzlich wird gemessen, ob der Zeiger noch stimmt: löst sich der SHA
+#     in der lokalen Historie auf, muss die dort abgelegte Fassung der Datei
+#     dem Arbeitsstand entsprechen. So bleibt ein vergessener zweiter Commit
+#     nicht unbemerkt. Lässt sich der SHA nicht auflösen — flache Kopie oder
+#     zusammengefasster Merge —, wird der Fall sichtbar übersprungen.
+# ─────────────────────────────────────────────────────────────────────────────
+_EIGENER_AUFRUF = re.compile(
+    r"^(?P<eigner>[^/]+)/(?P<repo>[^/]+)/\.github/workflows/"
+    r"(?P<datei>[^/@]+\.ya?ml)@(?P<ref>.+)$"
+)
+_RELATIVER_AUFRUF = re.compile(r"^\./\.github/workflows/")
+_SHA = re.compile(r"^[0-9a-f]{40}$")
+
+
+def _git(*args: str) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        ["git", "-C", str(WURZEL), *args],
+        capture_output=True,
+        text=True,
+    )
+
+
+def pruefe_eigene_workflow_verweise() -> None:
+    if not WORKFLOWS.is_dir():
+        _uebersprungen_("eigene-workflow-verweise", ".github/workflows/ fehlt")
+        return
+
+    befunde: list[str] = []
+    veraltet: list[str] = []
+    unpruefbar: list[str] = []
+    geprueft = 0
+
+    for datei in sorted(WORKFLOWS.glob("*.yml")):
+        try:
+            inhalt = yaml.safe_load(datei.read_text(encoding="utf-8"))
+        except Exception as ausnahme:
+            _fehler_(f"eigene-workflow-verweise/{datei.name}", f"nicht lesbar: {ausnahme}")
+            continue
+        if not isinstance(inhalt, dict):
+            continue
+
+        jobs = inhalt.get("jobs")
+        if not isinstance(jobs, dict):
+            continue
+
+        for job_id, job in jobs.items():
+            if not isinstance(job, dict):
+                continue
+            wert = job.get("uses")
+            if not isinstance(wert, str):
+                continue
+
+            if _RELATIVER_AUFRUF.match(wert):
+                befunde.append(
+                    f"{datei.name}: Job '{job_id}' ruft '{wert}' relativ auf. "
+                    "Über Repositoriumsgrenzen ist die Auflösung der Kurzform "
+                    "nicht festgelegt — Vollform mit Commit-SHA verwenden"
+                )
+                continue
+
+            treffer = _EIGENER_AUFRUF.match(wert)
+            if not treffer:
+                continue
+
+            ziel = WORKFLOWS / treffer.group("datei")
+            if not ziel.exists():
+                # Verweis auf einen fremden wiederverwendbaren Workflow.
+                continue
+
+            geprueft += 1
+            ref = treffer.group("ref")
+            if not _SHA.match(ref):
+                befunde.append(
+                    f"{datei.name}: Job '{job_id}' zeigt auf '{ref}'. "
+                    "Ein Zweig oder Tag ist beweglich — ein Commit-SHA nicht"
+                )
+                continue
+
+            if _git("cat-file", "-e", f"{ref}^{{commit}}").returncode != 0:
+                unpruefbar.append(f"{datei.name} -> {ref[:12]}")
+                continue
+
+            gepinnt = _git("show", f"{ref}:.github/workflows/{treffer.group('datei')}")
+            if gepinnt.returncode != 0:
+                unpruefbar.append(
+                    f"{datei.name} -> {treffer.group('datei')} fehlt in {ref[:12]}"
+                )
+                continue
+
+            if gepinnt.stdout != ziel.read_text(encoding="utf-8"):
+                veraltet.append(
+                    f"{datei.name}: Job '{job_id}' zeigt auf {ref[:12]}, dort "
+                    f"weicht {treffer.group('datei')} vom Arbeitsstand ab"
+                )
+
+    if befunde or veraltet:
+        _fehler_("eigene-workflow-verweise", "; ".join(befunde + veraltet))
+        return
+
+    if not geprueft:
+        _uebersprungen_(
+            "eigene-workflow-verweise",
+            "kein Workflow dieses Repositoriums ruft einen anderen auf",
+        )
+        return
+
+    if unpruefbar:
+        _uebersprungen_(
+            "eigene-workflow-verweise/aktualitaet",
+            "Form in Ordnung, Inhalt nicht messbar — SHA nicht in der lokalen "
+            f"Historie: {', '.join(unpruefbar)}",
+        )
+        _ok_(
+            f"eigene-workflow-verweise — {geprueft} Verweis(e) in Vollform "
+            "mit Commit-SHA"
+        )
+        return
+
+    _ok_(
+        f"eigene-workflow-verweise — {geprueft} Verweis(e) in Vollform mit "
+        "Commit-SHA, Zielfassung stimmt mit dem Arbeitsstand ueberein"
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Hauptprogramm
 # ─────────────────────────────────────────────────────────────────────────────
 def main() -> int:
@@ -592,6 +732,10 @@ def main() -> int:
 
     print("Schritt 10: Durchgriff der Eingaben (check_durchgriff.py)")
     pruefe_durchgriff()
+    print()
+
+    print("Schritt 11: Verweise auf eigene Workflows")
+    pruefe_eigene_workflow_verweise()
     print()
 
     gesamt = len(_ok) + len(_fehler) + len(_uebersprungen)
