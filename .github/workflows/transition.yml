@@ -19,6 +19,22 @@ name: Zustandsmaschine -- Uebergang pruefen und ausloesen
 # Werte erlaubt. Ein freier Pfad als Wert wuerde die Zustandsmaschine
 # umleitbar machen.
 #
+# ---------------------------------------------------------------------------
+# Was dieser Ablauf nach einem Lauf tut -- und was ausdruecklich nicht
+#
+# Er bestimmt den Folgezustand und gibt ihn als Ausgabe `next_label` zurueck.
+# Gesetzt wird das Label hier nicht. Ein Label, das mit dem Token dieses
+# Ablaufs gesetzt wird, loest keinen weiteren Workflow aus; die Kette bliebe
+# trotz richtigem Folgezustand stehen. Setzen muss es eine Identitaet, die
+# Folgeereignisse ausloest -- in aller Regel eine GitHub App. Deren Token
+# entsteht zur Laufzeit und ueberlebt keinen Job-Output: der Runner ersetzt
+# einen maskierten Wert durch eine leere Zeichenkette. Es muss also in dem
+# Job erzeugt und verwendet werden, in dem es gebraucht wird, und dieser Job
+# liegt im aufrufenden Repositorium.
+#
+# Die Arbeitsteilung ist damit: dieser Ablauf prueft, zaehlt, laesst den
+# Agenten laufen und sagt, was als naechstes gilt. Der Aufrufer setzt es.
+#
 # Bei unberechtigtem Akteur:
 #   - Label wird zurueckgesetzt
 #   - Kommentar mit Rolle, Zeitpunkt und Run-ID wird ins Issue geschrieben
@@ -53,9 +69,18 @@ on:
         description: >
           JSON-Objekt: Label -> Rollenname (nicht Pfad!).
           Erlaubte Werte: intake-coordinator, solution-architect,
-          test-designer, implementer, adversary, deployer
-        required: true
+          test-designer, implementer, adversary, deployer.
+          Leer laesst die Standardtabelle des Kerns gelten.
+        required: false
         type: string
+        default: ''
+      folge_label_map_json:
+        description: >
+          JSON-Objekt: Label -> Folgezustand. Leer laesst die Standardfolge
+          des Kerns gelten. Eine uebergebene Tabelle ersetzt sie vollstaendig.
+        required: false
+        type: string
+        default: ''
       max_attempts:
         description: Maximale Anzahl Agenten-Versuche pro Issue
         required: false
@@ -75,9 +100,19 @@ on:
       agent_status:
         description: Ergebnis des Agentenlaufs
         value: ${{ jobs.nachbereitung.outputs.status }}
+      next_label:
+        description: >
+          Das Label, das nach einem erfolgreichen Lauf gilt. Leer heisst:
+          die Kette haelt hier an. Setzen muss es der Aufrufer -- siehe die
+          Notiz zur Arbeitsteilung im Kopf dieser Datei.
+        value: ${{ jobs.nachbereitung.outputs.next_label }}
     secrets:
       transition_token:
-        description: GitHub-Token fuer Label- und Kommentar-Operationen
+        description: >
+          GitHub-Token fuer Kommentare und das Zuruecksetzen eines Labels bei
+          unberechtigtem Akteur. Das Standardtoken des Aufrufers genuegt und
+          ist hier die richtige Wahl: diese Schreibvorgaenge sollen
+          ausdruecklich keinen weiteren Workflow ausloesen.
         required: true
       anthropic_api_key:
         description: Anthropic API-Schluessel fuer den Agentenlauf
@@ -232,15 +267,22 @@ jobs:
       anthropic_api_key: ${{ secrets.anthropic_api_key }}
 
   # ---------------------------------------------------------------------------
-  # Job 3: Ergebnis pruefen und naechstes Label setzen
+  # Job 3: Ergebnis pruefen und den Folgezustand bestimmen
+  #
+  # Bis hierher galt: nach einem Lauf wurde dasselbe Label erneut gesetzt, das
+  # ihn ausgeloest hatte. Das ruecke die Zustandsmaschine nicht vor -- die
+  # Kette lief einen Schritt und blieb stehen. Jetzt wird der Folgezustand
+  # nachgeschlagen und als Ausgabe zurueckgegeben; gesetzt wird er vom
+  # Aufrufer mit einer Identitaet, die Folgeereignisse ausloest.
   # ---------------------------------------------------------------------------
   nachbereitung:
-    name: Ergebnis auswerten und Label setzen
+    name: Ergebnis auswerten und Folgezustand bestimmen
     needs: [pruefung, agent]
     if: always() && needs.pruefung.outputs.allowed == 'true'
     runs-on: ubuntu-latest
     outputs:
       status: ${{ steps.agent_ergebnis.outputs.status }}
+      next_label: ${{ steps.folge.outputs.next_label }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
@@ -248,7 +290,7 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Ergebnis auswerten und Label setzen
+      - name: Ergebnis auswerten
         id: agent_ergebnis
         env:
           GH_TOKEN: ${{ secrets.transition_token }}
@@ -291,12 +333,69 @@ jobs:
               )
               sys.exit(1)
 
-          # Naechstes Label setzen (Zustandsmaschine vorruecken)
+          schreibe("status", "success")
+          print(f"Lauf zu Label '{label}' erfolgreich abgeschlossen.")
+          PYEOF
+
+      # -----------------------------------------------------------------------
+      # Folgezustand nachschlagen und als Ausgabe zurueckgeben.
+      #
+      # Ohne uebergebene Tabelle gilt die Standardfolge aus
+      # scripts/factory_phasen.py. Ein leerer Wert ist kein Fehler: an einem
+      # menschlichen Gate und am Ende der Kette gibt es keinen Folgezustand.
+      # -----------------------------------------------------------------------
+      - name: Folgezustand bestimmen
+        id: folge
+        if: steps.agent_ergebnis.outputs.status == 'success'
+        env:
+          GATE_NEW_LABEL: ${{ inputs.new_label }}
+          GATE_FOLGE_LABEL_MAP_JSON: ${{ inputs.folge_label_map_json }}
+        run: python3 scripts/folgezustand.py
+
+      # -----------------------------------------------------------------------
+      # Den Stand ins Issue schreiben. Ein Kommentar ist kein Label und loest
+      # nichts aus -- er macht nur nachvollziehbar, was als naechstes gilt und
+      # wer es zu setzen hat.
+      # -----------------------------------------------------------------------
+      - name: Ergebnis ins Issue schreiben
+        if: steps.agent_ergebnis.outputs.status == 'success'
+        env:
+          GH_TOKEN: ${{ secrets.transition_token }}
+          GATE_ISSUE: ${{ inputs.issue_number }}
+          GATE_NEW_LABEL: ${{ inputs.new_label }}
+          GATE_NEXT_LABEL: ${{ steps.folge.outputs.next_label }}
+          GATE_RUN_ID: ${{ github.run_id }}
+        run: |
+          python3 - << 'PYEOF'
+          import os
+          import subprocess
+
+          issue = os.environ["GATE_ISSUE"]
+          label = os.environ["GATE_NEW_LABEL"]
+          folge = os.environ.get("GATE_NEXT_LABEL", "").strip()
+          run_id = os.environ["GATE_RUN_ID"]
+          token = os.environ["GH_TOKEN"]
+
+          if folge:
+              naechster = (
+                  f"Naechster Zustand: `{folge}`. Gesetzt wird er vom "
+                  f"aufrufenden Ablauf.\n"
+              )
+          else:
+              naechster = (
+                  "Fuer diesen Zustand ist kein Folgezustand hinterlegt. "
+                  "Die Kette haelt hier an.\n"
+              )
+
+          kommentar = (
+              f"<!-- factory:result run={run_id} status=success -->\n"
+              f"**Agentenlauf abgeschlossen** (Run {run_id})\n\n"
+              f"Erledigter Zustand: `{label}`\n\n"
+              f"{naechster}"
+          )
           subprocess.run(
-              ["gh", "issue", "edit", issue, "--add-label", label],
-              check=True,
+              ["gh", "issue", "comment", issue, "--body", kommentar],
+              check=False,
               env={**os.environ, "GH_TOKEN": token},
           )
-          schreibe("status", "success")
-          print(f"Label '{label}' gesetzt. Uebergang abgeschlossen.")
           PYEOF
