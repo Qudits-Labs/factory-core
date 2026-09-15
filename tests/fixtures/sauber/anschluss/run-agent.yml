@@ -1,0 +1,96 @@
+# Fixture -- reparierter Stand von run-agent.yml.
+# Beide Anschluss-Defekte behoben:
+#   Regel A: Dieser Workflow wird von transition.yml aufgerufen; der
+#            aufrufende Job 'agent' erhaelt einen eigenen permissions-Block
+#            (in transition.yml), der die hier deklarierten Rechte deckt.
+#            run-agent.yml selbst ruft niemanden auf -- keine Regel A hier.
+#   Regel B: Job 'agent' checkt den Kern separat aus (path: .factory-core)
+#            und referenziert scripts/ nur ueber $FACTORY_CORE_DIR.
+#            role-frameworks/ und schemas/ werden ebenfalls ueber den
+#            Kern-Pfad angesprochen, nicht als bare Pfade im Produktrepo.
+
+name: Agenten-Lauf
+
+on:
+  workflow_call:
+    inputs:
+      role:
+        required: true
+        type: string
+      issue_number:
+        required: true
+        type: number
+      core_ref:
+        description: SHA dieses Repositoriums, um den Rollenrahmen zu laden
+        required: true
+        type: string
+      allowed_bots:
+        required: false
+        type: string
+        default: ''
+      max_turns:
+        required: false
+        type: number
+        default: 20
+    secrets:
+      anthropic_api_key:
+        description: >
+          [durchgriff-pflicht] Anthropic API-Schluessel fuer den Agentenlauf.
+        required: false
+      claude_code_oauth_token:
+        description: >
+          [durchgriff-pflicht] OAuth-Token eines Claude-Abos.
+        required: false
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  agent:
+    name: Agenten-Lauf (${{ inputs.role }})
+    runs-on: ubuntu-latest
+    env:
+      FACTORY_CORE_DIR: .factory-core
+    steps:
+      # Schritt 1: Produktrepo auschecken (Standardverhalten -- kein repository:).
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+
+      # Schritt 2: Kern separat auschecken.
+      # Ohne repository:/ref: wuerde der Checkout das Produktrepo verwenden --
+      # scripts/, role-frameworks/ und schemas/ fehlen dort.
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          repository: Qudits-Labs/factory-core
+          ref: ${{ inputs.core_ref }}
+          path: .factory-core
+
+      - name: Zugangsart pruefen
+        env:
+          GATE_HAT_API_KEY: ${{ secrets.anthropic_api_key != '' && '1' || '' }}
+          GATE_HAT_OAUTH_TOKEN: ${{ secrets.claude_code_oauth_token != '' && '1' || '' }}
+        run: python3 "$FACTORY_CORE_DIR/scripts/pruefe_zugangsart.py"
+
+      - name: Rollenrahmen laden
+        env:
+          GATE_ROLE: ${{ inputs.role }}
+          GATE_CORE_REF: ${{ inputs.core_ref }}
+        run: |
+          python3 - << 'PYEOF'
+          import os
+          from pathlib import Path
+          factory_core = Path(os.environ["FACTORY_CORE_DIR"])
+          rollenrahmen = factory_core / "role-frameworks" / "rolle.md"
+          PYEOF
+
+      - name: Ergebnis validieren
+        run: |
+          python3 - << 'PYEOF'
+          import os
+          from pathlib import Path
+          factory_core = Path(os.environ["FACTORY_CORE_DIR"])
+          schema_datei = factory_core / "schemas" / "result.schema.json"
+          PYEOF

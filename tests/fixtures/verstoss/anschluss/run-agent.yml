@@ -1,0 +1,81 @@
+# Fixture -- Stand von run-agent.yml in Commit 854664ff, gekuerzt.
+# Zusammen mit transition.yml derselbe Stand, der GitHub mit startup_failure
+# gescheitert ist:
+# «run-agent.yml ... is requesting 'contents: write, pull-requests: write',
+# but is only allowed 'contents: read, pull-requests: none'».
+#
+# Beide Regeln schlagen an:
+#   Regel A: 'contents: write, pull-requests: write' angefordert, aber der
+#            aufrufende Job erlaubt nur 'contents: read, pull-requests: none'.
+#   Regel B: Job 'agent' liest role-frameworks/ und schemas/, checkt aber
+#            nur das Repositorium des Aufrufers aus (kein repository:/ref:).
+
+name: Agenten-Lauf
+
+on:
+  workflow_call:
+    inputs:
+      role:
+        required: true
+        type: string
+      issue_number:
+        required: true
+        type: number
+      core_ref:
+        description: SHA dieses Repositoriums, um den Rollenrahmen zu laden
+        required: true
+        type: string
+      allowed_bots:
+        required: false
+        type: string
+        default: ''
+      max_turns:
+        required: false
+        type: number
+        default: 20
+    secrets:
+      anthropic_api_key:
+        description: >
+          [durchgriff-pflicht] Anthropic API-Schluessel fuer den Agentenlauf.
+        required: false
+      claude_code_oauth_token:
+        description: >
+          [durchgriff-pflicht] OAuth-Token eines Claude-Abos.
+        required: false
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  agent:
+    name: Agenten-Lauf (${{ inputs.role }})
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+
+      - name: Zugangsart pruefen
+        env:
+          GATE_HAT_API_KEY: ${{ secrets.anthropic_api_key != '' && '1' || '' }}
+          GATE_HAT_OAUTH_TOKEN: ${{ secrets.claude_code_oauth_token != '' && '1' || '' }}
+        run: python3 scripts/pruefe_zugangsart.py
+
+      - name: Rollenrahmen laden
+        env:
+          GATE_ROLE: ${{ inputs.role }}
+          GATE_CORE_REF: ${{ inputs.core_ref }}
+        run: |
+          python3 - << 'PYEOF'
+          from pathlib import Path
+          rollenrahmen = Path("role-frameworks") / "rolle.md"
+          PYEOF
+
+      - name: Ergebnis validieren
+        run: |
+          python3 - << 'PYEOF'
+          from pathlib import Path
+          schema_datei = Path("schemas/result.schema.json")
+          PYEOF

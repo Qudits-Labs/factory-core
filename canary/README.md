@@ -37,6 +37,9 @@ Produkts. Er legt keine Dateien an und schreibt in kein Produktrepositorium.
 - Ein Dokument mit PASS-Urteil und offenem BLOCK-Befund fällt durch.
 - Ein Dokument mit BLOCK-Befund ohne spec_ref, location und reproduction
   fällt durch.
+- `scripts/validate_result.py` gibt Exit 0 für ein gültiges Dokument und
+  Exit 1 für ein ungültiges zurück (geprüft an `canary/fixtures/`; der
+  Schritt wird sichtbar übersprungen, solange das Skript noch fehlt).
 
 **Workflows**
 - Jeder Workflow unter `.github/workflows/` deklariert `permissions:`
@@ -48,6 +51,14 @@ Produkts. Er legt keine Dateien an und schreibt in kein Produktrepositorium.
   beide führen, und dazu alles, was der aufgerufene als
   `[durchgriff-pflicht]` markiert. Sonst bietet er einen Regler an, der
   nichts bewirkt.
+- Kein aufrufender Job erteilt einem aufgerufenen `workflow_call`-Workflow
+  mehr Rechte als dem Job selbst erlaubt sind (Regel A, `check_anschluss.py`).
+  Statische Rechterechnung auf YAML-Ebene; Laufzeit-Overrides durch GitHub
+  Enterprise-Richtlinien sind nicht sichtbar.
+- Jeder `workflow_call`-Workflow, dessen Jobs Kern-Dateien (`scripts/`,
+  `role-frameworks/`, `schemas/`) verwenden, hat das Eingabefeld `core_ref`
+  deklariert und einen `actions/checkout`-Schritt mit `repository:` und
+  `ref:`, der den Kern explizit holt (Regel B, `check_anschluss.py`).
 - Jeder Verweis auf einen Workflow dieses Repositoriums steht in der Vollform
   mit Commit-SHA, und der SHA trägt dieselbe Fassung der Zieldatei wie der
   Arbeitsstand. Damit fällt auf, wenn nach einer Änderung an einem
@@ -94,6 +105,10 @@ Produkts. Er legt keine Dateien an und schreibt in kein Produktrepositorium.
   menschliche Freigabe gesperrt ist.
 - Ob die Kennungen in `human_gate_logins` noch aktiven Konten gehören.
   Abgelaufene oder deaktivierte Konten werden nicht erkannt.
+- Ob GitHub Enterprise-Richtlinien die berechneten YAML-Rechte zur Laufzeit
+  einschränken oder erweitern. `check_anschluss.py` rechnet statisch auf
+  YAML-Ebene; was GitHub beim Start tatsächlich gewährt, ist erst im
+  Laufzeit-Log sichtbar.
 
 **Externe Abhängigkeiten**
 - Ob externe Actions (gepinnt auf SHA) inhaltlich sicher sind. Der Canary

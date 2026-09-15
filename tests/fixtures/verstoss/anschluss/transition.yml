@@ -1,0 +1,93 @@
+# Fixture -- Stand von transition.yml in Commit 854664ff, gekuerzt.
+# Genau dieser Stand ist bei GitHub mit startup_failure gescheitert:
+# «run-agent.yml ... is requesting 'contents: write, pull-requests: write',
+# but is only allowed 'contents: read, pull-requests: none'».
+#
+# Beide Regeln schlagen an:
+#   Regel A: Job 'agent' ruft run-agent.yml auf, das 'contents: write,
+#            pull-requests: write' anfordert, der Job erlaubt aber nur
+#            'contents: read, pull-requests: none' (workflow-level,
+#            kein Job-eigener permissions-Block).
+#   Regel B: Job 'pruefung' verwendet scripts/transition_check.py und
+#            Job 'nachbereitung' verwendet scripts/folgezustand.py;
+#            beide Checkouts fehlt repository:/ref: -- der Checkout landet
+#            im Produktrepo, nicht im Kern.
+
+name: Zustandsmaschine -- Uebergang pruefen und ausloesen
+
+on:
+  workflow_call:
+    inputs:
+      issue_number:
+        required: true
+        type: number
+      new_label:
+        required: true
+        type: string
+      actor_login:
+        required: true
+        type: string
+      core_ref:
+        description: SHA dieses Repositoriums fuer den Rollenrahmen
+        required: true
+        type: string
+      allowed_bots:
+        required: false
+        type: string
+        default: ''
+    secrets:
+      transition_token:
+        required: true
+      anthropic_api_key:
+        required: false
+      claude_code_oauth_token:
+        required: false
+
+permissions:
+  issues: write
+  contents: read
+
+jobs:
+  pruefung:
+    name: Zustandsuebergang
+    runs-on: ubuntu-latest
+    outputs:
+      allowed: ${{ steps.pruefung.outputs.allowed }}
+      role_name: ${{ steps.pruefung.outputs.role_name }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Transition pruefen
+        id: pruefung
+        env:
+          GATE_ACTOR_LOGIN: ${{ inputs.actor_login }}
+          GATE_NEW_LABEL: ${{ inputs.new_label }}
+        run: python3 scripts/transition_check.py
+
+  agent:
+    name: Agenten-Lauf
+    needs: pruefung
+    if: needs.pruefung.outputs.allowed == 'true'
+    uses: Beispiel-Eigner/Beispiel-Repo/.github/workflows/run-agent.yml@1111111111111111111111111111111111111111
+    with:
+      core_ref: ${{ inputs.core_ref }}
+      allowed_bots: ${{ inputs.allowed_bots }}
+    secrets:
+      anthropic_api_key: ${{ secrets.anthropic_api_key }}
+      claude_code_oauth_token: ${{ secrets.claude_code_oauth_token }}
+
+  nachbereitung:
+    name: Ergebnis auswerten und Folgezustand bestimmen
+    needs: [pruefung, agent]
+    if: always() && needs.pruefung.outputs.allowed == 'true'
+    runs-on: ubuntu-latest
+    outputs:
+      next_label: ${{ steps.folge.outputs.next_label }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Folgezustand bestimmen
+        id: folge
+        env:
+          GATE_NEW_LABEL: ${{ inputs.new_label }}
+        run: python3 scripts/folgezustand.py

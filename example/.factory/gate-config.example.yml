@@ -47,6 +47,10 @@ max_attempts: 3
 # Dateipfad: sonst liesse sich die Kette über diese Datei auf einen fremden
 # Workflow umlenken.
 roles:
+  # needs:shaping ist optional. Wer die Shaping-Phase nicht braucht, laesst
+  # die Zeile weg. Zeichen fuer Zeichen identisch mit STANDARD_ROLLE_JE_LABEL
+  # in scripts/factory_phasen.py.
+  "needs:shaping": solution-architect
   "status:spec": solution-architect
   "status:spec-review": adversary
   "status:test-design": test-designer
@@ -57,6 +61,9 @@ roles:
 # sitzt ein Mensch. `status:code-review` hat keinen Folgezustand, weil danach
 # der Merge kommt und der an einem Pull Request hängt, nicht an einem Label.
 next_states:
+  # Zeichen fuer Zeichen identisch mit STANDARD_FOLGE_JE_LABEL in
+  # scripts/factory_phasen.py.
+  "needs:shaping": "status:spec"
   "status:spec": "status:spec-review"
   "status:spec-review": "status:approved-spec"
   "status:test-design": "status:ready-for-dev"

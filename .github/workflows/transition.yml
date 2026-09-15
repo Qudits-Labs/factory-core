@@ -117,6 +117,9 @@ on:
       role_name:
         description: Rollenname fuer das Ziel-Label
         value: ${{ jobs.pruefung.outputs.role_name }}
+      role_known:
+        description: true wenn das Ziel-Label einer bekannten Rolle zugeordnet ist
+        value: ${{ jobs.pruefung.outputs.role_known }}
       agent_status:
         description: Ergebnis des Agentenlaufs
         value: ${{ jobs.nachbereitung.outputs.status }}
@@ -145,6 +148,13 @@ on:
           claude_code_oauth_token und anthropic_api_key muss gesetzt sein.
         required: false
 
+# Rechte gelten je Job. Die Zeilen hier sind der Stand fuer `pruefung` und
+# `nachbereitung`: beide schreiben Kommentare und Labels ins Issue und lesen
+# sonst nur. Der Job `agent` fuehrt einen eigenen Block, weil der aufgerufene
+# Ablauf run-agent.yml `contents: write` und `pull-requests: write` verlangt
+# und ein aufgerufener Ablauf nie mehr bekommt als der Job, der ihn aufruft.
+# Ein Aufruf mit weniger Rechten scheitert vor dem ersten Schritt mit dem
+# Hinweis, der Ablauf verlange mehr, als ihm erlaubt sei.
 permissions:
   issues: write
   contents: read
@@ -159,9 +169,17 @@ jobs:
     outputs:
       allowed: ${{ steps.pruefung.outputs.allowed }}
       role_name: ${{ steps.pruefung.outputs.role_name }}
+      role_known: ${{ steps.pruefung.outputs.role_known }}
       human_intervention: ${{ steps.pruefung.outputs.human_intervention }}
     steps:
+      # Muster A: Nur den Kern auschecken. Dieser Job braucht scripts/ aus
+      # factory-core, aber keinen Produktcode. persist-credentials: false
+      # verhindert, dass das Token in der Umgebung weiterwirkt.
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          repository: Qudits-Labs/factory-core
+          ref: ${{ inputs.core_ref }}
+          persist-credentials: false
 
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
@@ -186,7 +204,7 @@ jobs:
       # Schritt 2: Bei unberechtigtem Akteur -- Label zuruecksetzen, flaggen
       # -----------------------------------------------------------------------
       - name: Unauthorized-Transition behandeln
-        if: steps.pruefung.outputs.allowed == 'false'
+        if: always() && steps.pruefung.outputs.allowed == 'false' && steps.pruefung.outputs.role_known == 'true'
         env:
           GH_TOKEN: ${{ secrets.transition_token }}
           GATE_ISSUE: ${{ inputs.issue_number }}
@@ -236,7 +254,7 @@ jobs:
       # Schritt 3: Attempt-Eintrag VOR dem Agentenlauf ins Issue schreiben
       # -----------------------------------------------------------------------
       - name: Attempt-Eintrag schreiben
-        if: steps.pruefung.outputs.allowed == 'true'
+        if: steps.pruefung.outputs.allowed == 'true' && steps.pruefung.outputs.role_known == 'true'
         env:
           GH_TOKEN: ${{ secrets.transition_token }}
           GATE_ISSUE: ${{ inputs.issue_number }}
@@ -302,8 +320,17 @@ jobs:
   agent:
     name: Agenten-Lauf
     needs: pruefung
-    if: needs.pruefung.outputs.allowed == 'true'
-    uses: Qudits-Labs/factory-core/.github/workflows/run-agent.yml@12d2bf2ead99a71ca31584fcf6052c87fe5b6b38
+    if: needs.pruefung.outputs.allowed == 'true' && needs.pruefung.outputs.role_known == 'true'
+    # Rechte in der Kette koennen nur sinken. Dieser Block muss decken, was
+    # run-agent.yml auf Workflow-Ebene verlangt; die anderen Jobs dieses
+    # Ablaufs bleiben bei Lesen und Issues. Der Aufrufer im Produktrepositorium
+    # muss seinem Job, der transition.yml einbindet, dieselben Rechte geben --
+    # sonst bricht die Kette dort, eine Stufe frueher.
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+    uses: Qudits-Labs/factory-core/.github/workflows/run-agent.yml@f00b5b668506506fe959837e494926a8dfdc1e7e
     with:
       role: ${{ needs.pruefung.outputs.role_name }}
       issue_number: ${{ inputs.issue_number }}
@@ -327,13 +354,20 @@ jobs:
   nachbereitung:
     name: Ergebnis auswerten und Folgezustand bestimmen
     needs: [pruefung, agent]
-    if: always() && needs.pruefung.outputs.allowed == 'true'
+    if: always() && needs.pruefung.outputs.allowed == 'true' && needs.pruefung.outputs.role_known == 'true'
     runs-on: ubuntu-latest
     outputs:
       status: ${{ steps.agent_ergebnis.outputs.status }}
       next_label: ${{ steps.folge.outputs.next_label }}
     steps:
+      # Muster A: Nur den Kern auschecken. Dieser Job liest scripts/ aus
+      # factory-core (folgezustand.py). persist-credentials: false verhindert,
+      # dass das Token in der Umgebung weiterwirkt.
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          repository: Qudits-Labs/factory-core
+          ref: ${{ inputs.core_ref }}
+          persist-credentials: false
 
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:

@@ -4,6 +4,10 @@ name: G1 Story-Reife pruefen
 # Pflichtabschnitte, AK-Checkboxen, Nutzenmarker, Label-Praefixe.
 # Keine semantische Bewertung.
 #
+# Muster B: Der Produktcode liegt im Arbeitsverzeichnis, der Kern wird nach
+# RUNNER_TEMP/factory-core verschoben. FACTORY_CORE_DIR steht danach in allen
+# Schritten zur Verfuegung.
+#
 # Fremde Actions sind auf einen Commit-SHA gepinnt. Ein Tag laesst sich
 # verschieben, ein SHA nicht.
 
@@ -28,6 +32,10 @@ on:
         required: false
         type: boolean
         default: true
+      core_ref:
+        description: SHA dieses Repositoriums fuer den Kern
+        required: true
+        type: string
     outputs:
       pass:
         description: true wenn alle Pruefungen bestanden
@@ -48,6 +56,16 @@ jobs:
       findings_json: ${{ steps.pruefung.outputs.findings_json }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          repository: Qudits-Labs/factory-core
+          ref: ${{ inputs.core_ref }}
+          path: .factory-core
+          persist-credentials: false
+      - name: Kern-Verzeichnis verschieben
+        run: |
+          mv .factory-core "$RUNNER_TEMP/factory-core"
+          echo "FACTORY_CORE_DIR=$RUNNER_TEMP/factory-core" >> "$GITHUB_ENV"
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: '3.12'
@@ -58,4 +76,4 @@ jobs:
           GATE_ISSUE_LABELS: ${{ inputs.issue_labels }}
           GATE_REQUIRED_LABEL_PREFIXES: ${{ inputs.required_label_prefixes }}
           GATE_NUTZEN_REQUIRED: ${{ inputs.nutzen_marker_required }}
-        run: python3 scripts/gate_story_lint.py
+        run: python3 "$FACTORY_CORE_DIR/scripts/gate_story_lint.py"

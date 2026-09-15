@@ -1,0 +1,22 @@
+# Fixture -- Workflow ohne workflow_call (laeuft im Kern selbst).
+# Regel B gilt nur fuer workflow_call-Workflows. Ein Workflow mit on: push
+# laeuft im Kern-Repository, dort gehoert der github-Kontext dem Kern --
+# ein Checkout ohne repository: landet richtig. Kein Befund erwartet.
+
+name: Selbstlauf ohne workflow_call
+
+on:
+  push:
+
+permissions:
+  contents: read
+
+jobs:
+  selftest:
+    runs-on: ubuntu-latest
+    steps:
+      # Kein repository:/ref: -- laeuft im Kern, Checkout landet richtig.
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Selftest
+        run: python3 scripts/selftest.py

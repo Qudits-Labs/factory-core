@@ -1,0 +1,7 @@
+actor_login=beliebiger-nutzer
+transition_identity_login=factory-bot
+human_gate_logins=alice,bob
+new_label=profile:beispiel
+max_attempts=3
+current_attempts=0
+erwartete_rolle=

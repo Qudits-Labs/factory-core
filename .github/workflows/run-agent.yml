@@ -114,13 +114,34 @@ jobs:
       schema_valid: ${{ steps.validierung.outputs.schema_valid }}
       status: ${{ steps.ergebnis.outputs.status }}
     steps:
+      # Muster B: Produktrepositorium und Kern nebeneinander.
+      # Der Produktcode landet im Arbeitsverzeichnis (github.workspace).
+      # Der Kern landet in .factory-core und wird dann nach RUNNER_TEMP
+      # verschoben, damit er das Produktrepositorium nicht ueberschreibt.
+      # FACTORY_CORE_DIR wird in GITHUB_ENV geschrieben und steht in allen
+      # nachfolgenden Schritten zur Verfuegung.
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           fetch-depth: 0
 
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          repository: Qudits-Labs/factory-core
+          ref: ${{ inputs.core_ref }}
+          path: .factory-core
+          persist-credentials: false
+
+      - name: Kern-Verzeichnis verschieben
+        run: |
+          mv .factory-core "$RUNNER_TEMP/factory-core"
+          echo "FACTORY_CORE_DIR=$RUNNER_TEMP/factory-core" >> "$GITHUB_ENV"
+
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: '3.12'
+
+      - name: Abhaengigkeiten installieren
+        run: pip install --quiet jsonschema referencing
 
       # -----------------------------------------------------------------------
       # Schritt 0: Zugangsart pruefen, bevor irgendetwas laeuft
@@ -131,7 +152,7 @@ jobs:
         env:
           GATE_HAT_API_KEY: ${{ secrets.anthropic_api_key != '' && '1' || '' }}
           GATE_HAT_OAUTH_TOKEN: ${{ secrets.claude_code_oauth_token != '' && '1' || '' }}
-        run: python3 scripts/pruefe_zugangsart.py
+        run: python3 "$FACTORY_CORE_DIR/scripts/pruefe_zugangsart.py"
 
       # -----------------------------------------------------------------------
       # Schritt 1: Rolle validieren (Python, strukturell geprueft)
@@ -180,7 +201,8 @@ jobs:
           from pathlib import Path
 
           rolle = os.environ.get("GATE_ROLE", "")
-          rollenrahmen = Path("role-frameworks") / f"{rolle}.md"
+          kern_verz = Path(os.environ["FACTORY_CORE_DIR"])
+          rollenrahmen = kern_verz / "role-frameworks" / f"{rolle}.md"
 
           if not rollenrahmen.exists():
               print(
@@ -227,56 +249,12 @@ jobs:
 
       # -----------------------------------------------------------------------
       # Schritt 4: result.json validieren
+      # validate_result.py schreibt schema_valid nach GITHUB_OUTPUT und gibt
+      # Exit 0 (gueltig), 1 (fehlt oder Verstoss) oder 2 (fehlende Deps) zurueck.
       # -----------------------------------------------------------------------
       - name: result.json validieren
         id: validierung
-        run: |
-          python3 - << 'PYEOF'
-          import json
-          import os
-          import sys
-          from pathlib import Path
-
-          ergebnis_datei = Path(".factory/result.json")
-          github_output = os.environ.get("GITHUB_OUTPUT", "")
-
-          def schreibe(k, v):
-              if github_output:
-                  with open(github_output, "a") as f:
-                      f.write(f"{k}={v}\n")
-
-          if not ergebnis_datei.exists():
-              print("FEHLER: .factory/result.json fehlt.", file=sys.stderr)
-              schreibe("schema_valid", "false")
-              sys.exit(1)
-
-          try:
-              inhalt = json.loads(ergebnis_datei.read_text(encoding="utf-8"))
-          except json.JSONDecodeError as e:
-              print(f"FEHLER: result.json ist kein gueltiges JSON: {e}", file=sys.stderr)
-              schreibe("schema_valid", "false")
-              sys.exit(1)
-
-          # Schema-Validierung (jsonschema falls vorhanden)
-          schema_datei = Path("schemas/result.schema.json")
-          if schema_datei.exists():
-              try:
-                  import jsonschema
-                  schema = json.loads(schema_datei.read_text(encoding="utf-8"))
-                  jsonschema.validate(inhalt, schema)
-                  schreibe("schema_valid", "true")
-                  print("result.json entspricht dem Schema.")
-              except ImportError:
-                  print("WARNUNG: jsonschema nicht installiert, Schema-Pruefung uebersprungen.")
-                  schreibe("schema_valid", "true")
-              except jsonschema.ValidationError as e:
-                  print(f"FEHLER: result.json entspricht nicht dem Schema: {e.message}", file=sys.stderr)
-                  schreibe("schema_valid", "false")
-                  sys.exit(1)
-          else:
-              print("WARNUNG: schemas/result.schema.json fehlt, Schema-Pruefung uebersprungen.")
-              schreibe("schema_valid", "true")
-          PYEOF
+        run: python3 "$FACTORY_CORE_DIR/scripts/validate_result.py" .factory/result.json
 
       # -----------------------------------------------------------------------
       # Schritt 5: Outputs setzen

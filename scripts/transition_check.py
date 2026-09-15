@@ -202,6 +202,28 @@ def main(argv: list[str]) -> int:
         return 2
 
     rollenname = role_label_map.get(new_label, "")
+
+    # Label ohne Rolle bedeutet: kein Zustandslabel, kein Uebergang.
+    # Jeder Akteur darf solche Labels setzen; die Zustandsmaschine bleibt still.
+    if not rollenname:
+        schreibe_ausgabe("role_known", "false")
+        schreibe_ausgabe("allowed", "false")
+        schreibe_ausgabe("human_intervention", "false")
+        schreibe_ausgabe("role_name", "")
+        schreibe_ausgabe("attempts_ok", "true")
+        schreibe_ausgabe("attempts_current", str(current_attempts))
+        schreibe_ausgabe("attempts_max", str(max_attempts))
+        print(
+            f"Label {new_label!r} hat keine Rolle -- kein Zustandslabel, nichts zu tun."
+        )
+        if erwartete_rolle is not None and "" != erwartete_rolle:
+            print(
+                f"FEHLER: Erwartet war Rolle {erwartete_rolle!r}, bestimmt wurde ''.",
+                file=sys.stderr,
+            )
+            return 1
+        return 0
+
     akteur_erlaubt, ist_mensch, akteur_meldung = pruefe_akteur(
         actor, transition_identity, human_gate_logins
     )
@@ -209,6 +231,7 @@ def main(argv: list[str]) -> int:
 
     bestanden = akteur_erlaubt and versuche_ok
 
+    schreibe_ausgabe("role_known", "true")
     schreibe_ausgabe("allowed", "true" if akteur_erlaubt else "false")
     schreibe_ausgabe("human_intervention", "true" if ist_mensch else "false")
     schreibe_ausgabe("role_name", rollenname)
