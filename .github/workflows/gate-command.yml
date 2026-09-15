@@ -65,6 +65,10 @@ on:
         required: false
         type: string
         default: 'test-report'
+      core_ref:
+        description: SHA dieses Repositoriums fuer den Kern
+        required: true
+        type: string
     outputs:
       pass:
         description: true wenn der Befehl mit Exit 0 endete
@@ -97,6 +101,16 @@ jobs:
       findings_json: ${{ steps.ergebnis.outputs.findings_json }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          repository: Qudits-Labs/factory-core
+          ref: ${{ inputs.core_ref }}
+          path: .factory-core
+          persist-credentials: false
+      - name: Kern-Verzeichnis verschieben
+        run: |
+          mv .factory-core "$RUNNER_TEMP/factory-core"
+          echo "FACTORY_CORE_DIR=$RUNNER_TEMP/factory-core" >> "$GITHUB_ENV"
 
       # -----------------------------------------------------------------------
       # Schritt 1: Befehlspraefix validieren (Python, kein Shell-Interpolieren)
@@ -109,7 +123,7 @@ jobs:
         env:
           GATE_COMMAND: ${{ inputs.command }}
           GATE_ALLOWED_COMMAND_PREFIXES: ${{ inputs.allowed_command_prefixes }}
-        run: python3 scripts/gate_command_report.py
+        run: python3 "$FACTORY_CORE_DIR/scripts/gate_command_report.py"
 
       # -----------------------------------------------------------------------
       # Schritt 2: Service-Images validieren (wenn services_json gesetzt)

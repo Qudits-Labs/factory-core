@@ -63,6 +63,10 @@ on:
         required: false
         type: number
         default: 10
+      core_ref:
+        description: SHA dieses Repositoriums fuer den Kern
+        required: true
+        type: string
     outputs:
       pass:
         description: true wenn Deployment und Health-Check bestanden
@@ -97,6 +101,16 @@ jobs:
       findings_json: ${{ steps.health.outputs.findings_json }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          repository: Qudits-Labs/factory-core
+          ref: ${{ inputs.core_ref }}
+          path: .factory-core
+          persist-credentials: false
+      - name: Kern-Verzeichnis verschieben
+        run: |
+          mv .factory-core "$RUNNER_TEMP/factory-core"
+          echo "FACTORY_CORE_DIR=$RUNNER_TEMP/factory-core" >> "$GITHUB_ENV"
 
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
@@ -109,7 +123,7 @@ jobs:
         env:
           GATE_COMMAND: ${{ inputs.deploy_command }}
           GATE_ALLOWED_COMMAND_PREFIXES: ${{ inputs.allowed_command_prefixes }}
-        run: python3 scripts/gate_command_report.py
+        run: python3 "$FACTORY_CORE_DIR/scripts/gate_command_report.py"
 
       # -----------------------------------------------------------------------
       # Schritt 2: Deployment ausfuehren
@@ -131,4 +145,4 @@ jobs:
           GATE_RETRIES: ${{ inputs.retries }}
           GATE_RETRY_DELAY_SECONDS: ${{ inputs.retry_delay_seconds }}
           GATE_ROLLBACK_COMMAND: ${{ inputs.rollback_command }}
-        run: python3 scripts/gate_health_check.py
+        run: python3 "$FACTORY_CORE_DIR/scripts/gate_health_check.py"

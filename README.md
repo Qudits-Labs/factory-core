@@ -33,6 +33,10 @@ permissions:
 
 jobs:
   tests:
+    # Rechte koennen in der Kette nur sinken. gate-command.yml braucht
+    # nur contents: read (Standard), also genuegt der Workflow-Block oben.
+    # Ablaeufe, die run-agent.yml aufrufen, brauchen zusaetzlich
+    # pull-requests: write und issues: write -- dann hier anpassen.
     uses: Qudits-Labs/factory-core/.github/workflows/gate-command.yml@7e151870000000000000000000000000000000ab
     with:
       command: ${{ vars.FACTORY_TEST_COMMAND }}
@@ -40,6 +44,7 @@ jobs:
       setup: node
       runtime_version: '20'
       tc_id_pattern: 'TC-[0-9]+'
+      core_ref: 7e151870000000000000000000000000000000ab
 ```
 
 Der SHA im Beispiel ist ein Platzhalter. Den aktuellen holt man sich so:
@@ -124,6 +129,14 @@ hier:
 # .github/workflows/uebergang.yml im Produktrepositorium
 jobs:
   uebergang:
+    # Rechte koennen in einer Kette aus Abläufen nur sinken, nie steigen.
+    # Der Agentenlauf am Ende der Kette braucht Schreibrecht auf Inhalte und
+    # Pull Requests; steht hier weniger, bricht der Aufruf mit dem Hinweis ab,
+    # der aufgerufene Ablauf verlange mehr, als ihm erlaubt sei.
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
     uses: Qudits-Labs/factory-core/.github/workflows/transition.yml@<SHA>
     with:
       issue_number: ${{ github.event.issue.number }}
@@ -173,8 +186,31 @@ in einer versionierten Datei.
 
 Was ein Produktrepositorium **nicht** mehr mitbringen muss: die Zuordnung von
 Statuslabel zu Rolle und die Folge der Zustände. Beide stehen als Standard im
-Kern. Wer davon abweicht, übergibt seine eigene Tabelle und ersetzt die
-Standardtabelle damit vollständig.
+Kern -- einschliesslich der optionalen Shaping-Phase (`needs:shaping` →
+`solution-architect` → `status:spec`). Wer davon abweicht, übergibt seine
+eigene Tabelle und ersetzt die Standardtabelle damit vollständig.
+
+### Rechte
+
+Rechte können in einer Kette aus Abläufen nur sinken, nie steigen. Ein Ablauf,
+der `run-agent.yml` aufruft -- direkt oder über `transition.yml` --, muss dem
+aufrufenden Job mindestens `contents: write`, `pull-requests: write` und
+`issues: write` geben; andernfalls bricht GitHub den Lauf vor dem ersten Schritt
+mit `startup_failure` ab. Das Beispiel oben trägt den Block am Job `uebergang`.
+
+### Checkout
+
+Der `github`-Kontext in einem wiederverwendbaren Ablauf zeigt auf das
+Produktrepositorium, das ihn aufgerufen hat. `actions/checkout` ohne explizites
+`repository:` checkt deshalb das **Produkt** aus, nicht den Kern. `scripts/`,
+`role-frameworks/` und `schemas/` aus diesem Repositorium fehlen dann.
+
+Jeder Job in den Ablaufen dieses Repositoriums checkt den Kern deshalb mit
+`repository: Qudits-Labs/factory-core` und `ref: ${{ inputs.core_ref }}` aus.
+Jobs, die nur den Kern brauchen (Muster A), checken nur ihn; Jobs, die beides
+brauchen (Muster B), halten den Produktcode im Arbeitsverzeichnis und legen den
+Kern nach `$RUNNER_TEMP/factory-core`, erreichbar über `$FACTORY_CORE_DIR`.
+Der SHA kommt als `core_ref`-Eingabe vom Aufrufer.
 
 ## Warum die Grenze eng ist
 

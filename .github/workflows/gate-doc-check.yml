@@ -9,6 +9,10 @@ name: G12 Dokumentations-Vollstaendigkeit pruefen (maschineller Teil)
 # uebergibt ihren Inhalt als String. Damit liest dieser Kern keine Datei
 # direkt aus dem aufrufenden Repositorium.
 #
+# Muster B: Der Produktcode liegt im Arbeitsverzeichnis, der Kern wird nach
+# RUNNER_TEMP/factory-core verschoben. FACTORY_CORE_DIR steht danach in allen
+# Schritten zur Verfuegung.
+#
 # Fremde Actions sind auf einen Commit-SHA gepinnt.
 
 on:
@@ -27,6 +31,10 @@ on:
         type: string
       head_sha:
         description: Head-Commit-SHA fuer den Diff
+        required: true
+        type: string
+      core_ref:
+        description: SHA dieses Repositoriums fuer den Kern
         required: true
         type: string
     outputs:
@@ -62,6 +70,16 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           fetch-depth: 0
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          repository: Qudits-Labs/factory-core
+          ref: ${{ inputs.core_ref }}
+          path: .factory-core
+          persist-credentials: false
+      - name: Kern-Verzeichnis verschieben
+        run: |
+          mv .factory-core "$RUNNER_TEMP/factory-core"
+          echo "FACTORY_CORE_DIR=$RUNNER_TEMP/factory-core" >> "$GITHUB_ENV"
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: '3.12'
@@ -71,4 +89,4 @@ jobs:
           GATE_DOC_MAP_JSON: ${{ inputs.doc_map_json }}
           GATE_BASE_SHA: ${{ inputs.base_sha }}
           GATE_HEAD_SHA: ${{ inputs.head_sha }}
-        run: python3 scripts/gate_doc_check.py
+        run: python3 "$FACTORY_CORE_DIR/scripts/gate_doc_check.py"

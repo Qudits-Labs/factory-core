@@ -146,6 +146,18 @@ FAELLE = [
         " Pflicht-Secret werden abgewiesen",
     ),
     (
+        "check_anschluss.py",
+        SAUBER / "anschluss",
+        0,
+        "reparierter Stand: Rechtekette eingehalten, Kern checkt sich selbst aus",
+    ),
+    (
+        "check_anschluss.py",
+        VERSTOSS / "anschluss",
+        1,
+        "Stand 854664ff: Rechte-Verletzung und fehlender Kern-Checkout werden abgewiesen",
+    ),
+    (
         "transition_check.py",
         SAUBER / "transition-check",
         0,
@@ -168,6 +180,31 @@ FAELLE = [
         SAUBER / "transition-check-code-review",
         0,
         "Standardtabelle: status:code-review laesst den Adversary arbeiten",
+    ),
+    # Neue Faelle direkt nach den transition_check-Eintraegen:
+    (
+        "transition_check.py",
+        SAUBER / "transition-check-ohne-rolle",
+        0,
+        "Label ohne Rolle (kein Zustandslabel) laesst die Maschine still -- Exit 0",
+    ),
+    (
+        "transition_check.py",
+        SAUBER / "transition-check-shaping",
+        0,
+        "Standardtabelle: needs:shaping laesst den Solution Architect arbeiten",
+    ),
+    (
+        "validate_result.py",
+        SAUBER / "validate-result",
+        0,
+        "gueltiges result.json besteht die Schema-Pruefung",
+    ),
+    (
+        "validate_result.py",
+        VERSTOSS / "validate-result",
+        1,
+        "widersprueuchliches result.json (PASS mit BLOCK-Befund) wird abgewiesen",
     ),
     (
         "folgezustand.py",
@@ -192,6 +229,13 @@ FAELLE = [
         SAUBER / "folgezustand-ersetzt",
         0,
         "eine uebergebene Tabelle ersetzt die Standardfolge",
+    ),
+    # Neuer Folgezustand-Eintrag nach den bestehenden folgezustand-Eintraegen:
+    (
+        "folgezustand.py",
+        SAUBER / "folgezustand-shaping",
+        0,
+        "Standardfolge: auf needs:shaping folgt status:spec",
     ),
     (
         "folgezustand.py",

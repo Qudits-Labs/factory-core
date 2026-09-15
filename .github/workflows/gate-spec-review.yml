@@ -146,6 +146,12 @@ jobs:
   agent:
     name: Agentenlauf (Adversary)
     needs: vorbereitung
+    # Rechte muessen mindestens das decken, was run-agent.yml deklariert.
+    # Weniger wuerde den Lauf vor dem ersten Schritt mit startup_failure abbrechen.
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
     uses: Qudits-Labs/factory-core/.github/workflows/run-agent.yml@12d2bf2ead99a71ca31584fcf6052c87fe5b6b38
     with:
       role: adversary

@@ -71,6 +71,21 @@ Mensch mit Freigaberecht gehandelt hat.
 Ein eigener Workflow dafür wäre eine Einladung. Was ein Workflow tun kann, kann
 ein Workflow auch ohne Menschen tun.
 
+## Rechte und Checkout
+
+**Rechte:** Rechte können in einer Kette aus Abläufen nur sinken. Ein Ablauf,
+der `run-agent.yml` aufruft -- direkt oder über `transition.yml` --, muss dem
+aufrufenden Job mindestens `contents: write`, `pull-requests: write` und
+`issues: write` erteilen. Weniger bricht den Lauf vor dem ersten Schritt ab.
+Der Workflow-Kopf reicht nicht; die Rechte müssen am **Job** stehen, der den
+wiederverwendbaren Ablauf aufruft.
+
+**Checkout:** Der `github`-Kontext in einem wiederverwendbaren Ablauf zeigt auf
+das Produktrepositorium. Jeder Job, der Dateien aus diesem Kern braucht, muss
+`actions/checkout` deshalb mit `repository: Qudits-Labs/factory-core` und
+`ref: ${{ inputs.core_ref }}` aufrufen. Ohne diese Angabe checkt der Runner
+das Produkt aus, und `scripts/`, `role-frameworks/` sowie `schemas/` fehlen.
+
 ## Auflösung der Schema-Verweise
 
 `result.schema.json` verweist auf `finding.schema.json` über einen relativen

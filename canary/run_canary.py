@@ -688,6 +688,98 @@ def pruefe_eigene_workflow_verweise() -> None:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# 12. Anschluss an ein Produktrepositorium
+#     Zwei Defekte, die erst beim ersten echten Anschluss sichtbar wurden:
+#
+#     Regel A -- Rechtekette:
+#     Ein aufgerufener workflow_call-Workflow kann nie mehr Rechte bekommen
+#     als der aufrufende Job erlaubt. GitHub prueft das zur Laufzeit; hier
+#     wird statisch nachgerechnet. Gescheitert war transition.yml:
+#     run-agent.yml forderte contents: write, der Job durfte nur read.
+#
+#     Regel B -- Falscher Checkout:
+#     actions/checkout ohne repository: checkt im aufgerufenen Workflow das
+#     Produktrepo aus, nicht den Kern. Scripts, Rollenrahmen und Schemas
+#     lagen im Kern und fehlten im Produktrepo. Jeder Job, der Kern-Dateien
+#     braucht, muss sich den Kern explizit holen.
+#
+#     Schritt 2 (selftest) misst check_anschluss.py an den Fixtures.
+#     Dieser Schritt misst dieselbe Pruefung am eigenen Bestand.
+# ─────────────────────────────────────────────────────────────────────────────
+def pruefe_anschluss() -> None:
+    skript = SCRIPTS / "check_anschluss.py"
+    if not skript.exists():
+        _uebersprungen_("anschluss", f"{skript.name} fehlt")
+        return
+    if not WORKFLOWS.is_dir():
+        _uebersprungen_("anschluss", ".github/workflows/ fehlt")
+        return
+
+    lauf = _lauf(skript, str(WORKFLOWS))
+    if lauf.returncode == 0:
+        _ok_(f"anschluss — {lauf.stdout.strip().splitlines()[-1]}")
+    else:
+        _fehler_(
+            "anschluss",
+            f"Exit {lauf.returncode} statt 0. "
+            + (lauf.stderr.strip()[:400] or lauf.stdout.strip()[:400]),
+        )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 13. Ergebnis-Dokument-Validierung (validate_result.py)
+#     validate_result.py prueft ein result.json-Dokument gegen das Schema.
+#     Dev schreibt dieses Skript parallel; fehlt es noch, wird der Schritt
+#     sichtbar uebersprungen. Der Schritt laeuft gegen die Canary-Fixtures
+#     result-gueltig.json (Exit 0 erwartet) und
+#     result-block-ohne-beleg.json (Exit 1 erwartet).
+# ─────────────────────────────────────────────────────────────────────────────
+def pruefe_validate_result() -> None:
+    skript = SCRIPTS / "validate_result.py"
+    if not skript.exists():
+        _uebersprungen_(
+            "validate-result",
+            f"{skript.name} fehlt -- wird von Dev angelegt",
+        )
+        return
+
+    gueltig = FIXTURES / "result-gueltig.json"
+    ungueltig = FIXTURES / "result-block-ohne-beleg.json"
+
+    if not gueltig.exists():
+        _uebersprungen_("validate-result/gueltig", "Fixture result-gueltig.json fehlt")
+    else:
+        lauf = _lauf(skript, str(gueltig))
+        if lauf.returncode == 0:
+            _ok_("validate-result/gueltig — gueltiges result.json besteht")
+        else:
+            _fehler_(
+                "validate-result/gueltig",
+                f"Exit {lauf.returncode} statt 0. "
+                + (lauf.stderr.strip()[:200] or lauf.stdout.strip()[:200]),
+            )
+
+    if not ungueltig.exists():
+        _uebersprungen_(
+            "validate-result/block-ohne-beleg",
+            "Fixture result-block-ohne-beleg.json fehlt",
+        )
+    else:
+        lauf = _lauf(skript, str(ungueltig))
+        if lauf.returncode == 1:
+            _ok_(
+                "validate-result/block-ohne-beleg — BLOCK-Befund ohne Beleg "
+                "wird abgewiesen"
+            )
+        else:
+            _fehler_(
+                "validate-result/block-ohne-beleg",
+                f"Exit {lauf.returncode} statt 1. "
+                + (lauf.stderr.strip()[:200] or lauf.stdout.strip()[:200]),
+            )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Hauptprogramm
 # ─────────────────────────────────────────────────────────────────────────────
 def main() -> int:
@@ -736,6 +828,14 @@ def main() -> int:
 
     print("Schritt 11: Verweise auf eigene Workflows")
     pruefe_eigene_workflow_verweise()
+    print()
+
+    print("Schritt 12: Anschluss an ein Produktrepositorium (check_anschluss.py)")
+    pruefe_anschluss()
+    print()
+
+    print("Schritt 13: Ergebnis-Dokument-Validierung (validate_result.py)")
+    pruefe_validate_result()
     print()
 
     gesamt = len(_ok) + len(_fehler) + len(_uebersprungen)

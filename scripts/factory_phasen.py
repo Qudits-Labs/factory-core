@@ -67,6 +67,12 @@ ERLAUBTE_ROLLENNAMEN: frozenset[str] = frozenset(
 # die Zustandsmaschine still liegen.
 # ---------------------------------------------------------------------------
 STANDARD_ROLLE_JE_LABEL: dict[str, str] = {
+    # Optionale Solution-Shaping-Phase vor status:spec. Laeuft nur, wenn jemand
+    # das Label setzt; der Rollenrahmen des Solution Architect deckt die
+    # Entscheidung bereits ab. Das Label traegt bewusst nicht das Praefix
+    # `status:`, weil es eine Anforderung an den Vorgang ausdrueckt und nicht
+    # seinen Zustand beschreibt.
+    "needs:shaping": "solution-architect",
     "status:spec": "solution-architect",
     "status:spec-review": "adversary",
     "status:test-design": "test-designer",
@@ -95,6 +101,8 @@ STANDARD_ROLLE_JE_LABEL: dict[str, str] = {
 # fehlender Eintrag ist kein Fehler: er heisst, die Kette haelt hier an.
 # ---------------------------------------------------------------------------
 STANDARD_FOLGE_JE_LABEL: dict[str, str] = {
+    # Auf needs:shaping folgt status:spec -- die eigentliche Spezifikationsphase.
+    "needs:shaping": "status:spec",
     "status:spec": "status:spec-review",
     "status:spec-review": "status:approved-spec",
     "status:test-design": "status:ready-for-dev",

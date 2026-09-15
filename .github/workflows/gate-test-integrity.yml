@@ -3,6 +3,10 @@ name: G7 Testdatei-Integritaet pruefen
 # Schuetzt geschuetzte Testpfade vor stillschweigender Anpassung.
 # Fehlt die Baseline, endet der Workflow mit Fehler -- nie mit stillem PASS.
 #
+# Muster B: Der Produktcode liegt im Arbeitsverzeichnis, der Kern wird nach
+# RUNNER_TEMP/factory-core verschoben. FACTORY_CORE_DIR steht danach in allen
+# Schritten zur Verfuegung.
+#
 # Fremde Actions sind auf einen Commit-SHA gepinnt.
 
 on:
@@ -20,6 +24,10 @@ on:
         type: string
       protected_paths:
         description: Komma-getrennte Glob-Muster fuer geschuetzte Pfade
+        required: true
+        type: string
+      core_ref:
+        description: SHA dieses Repositoriums fuer den Kern
         required: true
         type: string
     outputs:
@@ -48,6 +56,16 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           fetch-depth: 0
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          repository: Qudits-Labs/factory-core
+          ref: ${{ inputs.core_ref }}
+          path: .factory-core
+          persist-credentials: false
+      - name: Kern-Verzeichnis verschieben
+        run: |
+          mv .factory-core "$RUNNER_TEMP/factory-core"
+          echo "FACTORY_CORE_DIR=$RUNNER_TEMP/factory-core" >> "$GITHUB_ENV"
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: '3.12'
@@ -57,4 +75,4 @@ jobs:
           GATE_BASELINE_SHA: ${{ inputs.baseline_sha }}
           GATE_HEAD_SHA: ${{ inputs.head_sha }}
           GATE_PROTECTED_PATHS: ${{ inputs.protected_paths }}
-        run: python3 scripts/gate_test_integrity.py
+        run: python3 "$FACTORY_CORE_DIR/scripts/gate_test_integrity.py"
