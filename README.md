@@ -264,6 +264,7 @@ python3 scripts/selftest.py
 python3 scripts/check_workflow_triggers.py .github/workflows
 python3 scripts/check_no_secrets.py .github/workflows
 python3 scripts/check_durchgriff.py .github/workflows
+python3 scripts/check_anschluss.py .github/workflows
 ```
 
 Jede Prüfung wird an einem sauberen und an einem verletzenden Fall gemessen. Die
