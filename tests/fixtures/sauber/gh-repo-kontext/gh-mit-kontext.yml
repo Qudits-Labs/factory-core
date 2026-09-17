@@ -1,0 +1,84 @@
+name: Fixture -- gh-Aufrufe mit Repositoriumskontext
+
+# Sauberer Fall fuer check_gh_repo_kontext.py. Jeder gh-Aufruf hat entweder
+# GH_REPO in der Umgebung (Job- oder Schritt-Ebene) oder --repo im Aufruf.
+
+on:
+  workflow_call:
+    inputs:
+      issue_number:
+        required: true
+        type: number
+
+permissions:
+  issues: write
+  contents: read
+
+jobs:
+  # Variante a: GH_REPO auf Job-Ebene, Python-Listenliteral ohne --repo
+  job_env:
+    runs-on: ubuntu-latest
+    env:
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Kommentar schreiben
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GATE_ISSUE: ${{ inputs.issue_number }}
+        run: |
+          python3 - << 'PYEOF'
+          import os
+          import subprocess
+          issue = os.environ["GATE_ISSUE"]
+          subprocess.run(
+              ["gh", "issue", "comment", issue, "--body", "hallo"],
+              check=True,
+              env={**os.environ, "GH_TOKEN": os.environ["GH_TOKEN"]},
+          )
+          PYEOF
+
+  # Variante b: --repo im Aufruf, keine GH_REPO-Umgebung
+  repo_flag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Label setzen (Python)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python3 - << 'PYEOF'
+          import os
+          import subprocess
+          subprocess.run(
+              ["gh", "issue", "edit", "1", "--repo", os.environ["GITHUB_REPOSITORY"], "--add-label", "x"],
+              check=False,
+          )
+          PYEOF
+      - name: Label setzen (Shell)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh issue edit 1 --repo "$GITHUB_REPOSITORY" \
+            --add-label x
+      - name: Kurzform -R
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh api -R "$GITHUB_REPOSITORY" repos/{owner}/{repo}
+
+  # Variante c: GH_REPO auf Schritt-Ebene, Shell-Aufruf ohne --repo
+  step_env:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Kommentar schreiben
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          # gh liest GH_REPO -- diese Kommentarzeile zaehlt nicht als Aufruf
+          gh issue comment 1 --body "hallo"
+
+  # Kein gh-Aufruf: darf keinen Befund erzeugen
+  ohne_gh:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Nur echo
+        run: echo "gh ist hier nur ein Wort in einem String"

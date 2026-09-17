@@ -66,6 +66,13 @@ Produkts. Er legt keine Dateien an und schreibt in kein Produktrepositorium.
   nachzieht. Lässt sich der SHA lokal nicht auflösen — flache Kopie —, wird
   dieser zweite Teil sichtbar übersprungen; deshalb holt `canary.yml` die
   volle Historie.
+- Jeder `gh`-Aufruf in einem `run:`-Text (Python-Listenliteral `["gh", ...]`
+  oder Shell-Zeile `gh ...`) trägt `--repo` oder läuft in einem Job bzw.
+  Schritt, dessen `env:` `GH_REPO` setzt. Ohne beides leitet `gh` das
+  Repositorium aus dem Arbeitsverzeichnis ab, und das ist in einem
+  wiederverwendbaren Ablauf der Kern, nicht das Produkt
+  (`check_gh_repo_kontext.py`; Fixtures unter
+  `tests/fixtures/*/gh-repo-kontext/`).
 
 ---
 

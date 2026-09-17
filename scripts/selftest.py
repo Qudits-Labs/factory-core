@@ -158,6 +158,18 @@ FAELLE = [
         "Stand 854664ff: Rechte-Verletzung und fehlender Kern-Checkout werden abgewiesen",
     ),
     (
+        "check_gh_repo_kontext.py",
+        SAUBER / "gh-repo-kontext",
+        0,
+        "jeder gh-Aufruf traegt --repo oder laeuft mit GH_REPO in der Umgebung",
+    ),
+    (
+        "check_gh_repo_kontext.py",
+        VERSTOSS / "gh-repo-kontext",
+        1,
+        "gh-Aufruf ohne --repo und ohne GH_REPO sowie verworfene Umgebung werden abgewiesen",
+    ),
+    (
         "transition_check.py",
         SAUBER / "transition-check",
         0,
