@@ -166,6 +166,14 @@ jobs:
   pruefung:
     name: Zustandsuebergang (${{ inputs.new_label }})
     runs-on: ubuntu-latest
+    # Repositoriumskontext fuer gh: Dieser Job checkt den Kern aus, nicht das
+    # Produkt. Ohne diese Zeile leitet gh das Repositorium aus dem
+    # Arbeitsverzeichnis ab und sucht Issues in Qudits-Labs/factory-core --
+    # dort gibt es sie nicht. github.repository ist das aufrufende
+    # Produktrepositorium; gh liest GH_REPO und wertet es fuer jeden Aufruf
+    # aus. Siehe docs/gate-vertrag.md, Abschnitt "gh-Aufrufe".
+    env:
+      GH_REPO: ${{ github.repository }}
     outputs:
       allowed: ${{ steps.pruefung.outputs.allowed }}
       role_name: ${{ steps.pruefung.outputs.role_name }}
@@ -356,6 +364,9 @@ jobs:
     needs: [pruefung, agent]
     if: always() && needs.pruefung.outputs.allowed == 'true' && needs.pruefung.outputs.role_known == 'true'
     runs-on: ubuntu-latest
+    # Repositoriumskontext fuer gh -- gleiche Begruendung wie bei `pruefung`.
+    env:
+      GH_REPO: ${{ github.repository }}
     outputs:
       status: ${{ steps.agent_ergebnis.outputs.status }}
       next_label: ${{ steps.folge.outputs.next_label }}
