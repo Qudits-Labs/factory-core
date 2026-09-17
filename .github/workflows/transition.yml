@@ -183,7 +183,7 @@ jobs:
       # Muster A: Nur den Kern auschecken. Dieser Job braucht scripts/ aus
       # factory-core, aber keinen Produktcode. persist-credentials: false
       # verhindert, dass das Token in der Umgebung weiterwirkt.
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: Qudits-Labs/factory-core
           ref: ${{ inputs.core_ref }}
@@ -374,7 +374,7 @@ jobs:
       # Muster A: Nur den Kern auschecken. Dieser Job liest scripts/ aus
       # factory-core (folgezustand.py). persist-credentials: false verhindert,
       # dass das Token in der Umgebung weiterwirkt.
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: Qudits-Labs/factory-core
           ref: ${{ inputs.core_ref }}
