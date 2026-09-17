@@ -1,0 +1,38 @@
+[
+  {
+    "id": 2001,
+    "user": {"login": "factory-bot"},
+    "created_at": "2026-09-11T08:00:00Z",
+    "body": "<!-- factory:attempt run=4111 -->\n**Agentenlauf gestartet** (automatisch)\n\n| Feld | Wert |\n|------|------|\n| Rolle | `implementer` |\n| Akteur | `factory-bot` |\n| Zeitstempel | 2026-09-11T08:00:00Z |\n| Run-ID | 4111 |\n"
+  },
+  {
+    "id": 2002,
+    "user": {"login": "factory-bot"},
+    "created_at": "2026-09-11T08:20:00Z",
+    "body": "<!-- factory:result run=4111 status=agent_error -->\n**Agentenlauf fehlgeschlagen** (Run 4111)\n\nStatus: `agent_error` | Schema gueltig: `false`\n"
+  },
+  {
+    "id": 2003,
+    "user": {"login": "factory-bot"},
+    "created_at": "2026-09-11T09:00:00Z",
+    "body": "<!-- factory:attempt run=4222 -->\n**Agentenlauf gestartet** (automatisch)\n\n| Feld | Wert |\n|------|------|\n| Rolle | `implementer` |\n| Akteur | `factory-bot` |\n| Zeitstempel | 2026-09-11T09:00:00Z |\n| Run-ID | 4222 |\n"
+  },
+  {
+    "id": 2004,
+    "user": {"login": "factory-bot"},
+    "created_at": "2026-09-11T10:00:00Z",
+    "body": "<!-- factory:attempt run=4333 -->\n**Agentenlauf gestartet** (menschlicher Eingriff)\n\n| Feld | Wert |\n|------|------|\n| Rolle | `implementer` |\n| Akteur | `alice` |\n| Zeitstempel | 2026-09-11T10:00:00Z |\n| Run-ID | 4333 |\n"
+  },
+  {
+    "id": 2005,
+    "user": {"login": "factory-bot"},
+    "created_at": "2026-09-11T11:00:00Z",
+    "body": "<!-- factory:attempts-exhausted run=4444 -->\n**Versuchsgrenze erreicht** (Run 4444)\n\nRolle `implementer` hat an diesem Issue 3 von 3 Versuchen verbraucht (`max_attempts`). Es wurde kein weiterer Agentenlauf gestartet.\n\nDie Zaehlung sinkt nicht; ein erneutes Setzen von `status:ready-for-dev` loest keinen Lauf aus. Wer die Rolle hier noch einmal arbeiten lassen will, hebt `max_attempts` im Produktrepositorium an; sonst uebernimmt ein Mensch.\n"
+  },
+  {
+    "id": 2006,
+    "user": {"login": "factory-bot"},
+    "created_at": "2026-09-11T11:30:00Z",
+    "body": "<!-- factory:attempts-exhausted run=4555 -->\n**Versuchsgrenze erreicht** (Run 4555)\n\nRolle `implementer` hat an diesem Issue 3 von 3 Versuchen verbraucht (`max_attempts`). Es wurde kein weiterer Agentenlauf gestartet.\n"
+  }
+]

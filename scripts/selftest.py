@@ -206,6 +206,13 @@ FAELLE = [
         0,
         "Standardtabelle: needs:shaping laesst den Solution Architect arbeiten",
     ),
+    (
+        "transition_check.py",
+        VERSTOSS / "transition-check-versuche-erschoepft",
+        1,
+        "berechtigte Identitaet, aber Versuchsgrenze erreicht (3/3) --"
+        " allowed bleibt wahr, attempts_ok wird falsch, Uebergang verweigert",
+    ),
     # --- Versuchszaehlung aus factory:attempt-Kommentaren ---
     (
         "count_attempts.py",
@@ -224,6 +231,12 @@ FAELLE = [
         SAUBER / "count-attempts-ohne-markierung",
         0,
         "Kommentare ohne Markierung zaehlen nicht, auch nicht mit Rollenzeile -- 0 Versuche",
+    ),
+    (
+        "count_attempts.py",
+        SAUBER / "count-attempts-erschoepft-markierung",
+        0,
+        "factory:attempts-exhausted-Kommentare zaehlen nicht als Versuch -- 3 bleibt 3",
     ),
     (
         "count_attempts.py",
