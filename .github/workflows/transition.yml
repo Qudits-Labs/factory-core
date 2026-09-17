@@ -40,6 +40,12 @@ name: Zustandsmaschine -- Uebergang pruefen und ausloesen
 #   - Kommentar mit Rolle, Zeitpunkt und Run-ID wird ins Issue geschrieben
 #   - Label flag:unauthorized-transition wird gesetzt
 #
+# Bei erreichter Versuchsgrenze (max_attempts):
+#   - kein Attempt-Eintrag, kein Agentenlauf
+#   - Kommentar <!-- factory:attempts-exhausted --> mit Rolle, Zaehlung und
+#     Grenze wird ins Issue geschrieben
+#   - Label flag:attempts-exhausted wird gesetzt
+#
 # Fremde Actions sind auf einen Commit-SHA gepinnt.
 
 on:
@@ -179,6 +185,13 @@ jobs:
       role_name: ${{ steps.pruefung.outputs.role_name }}
       role_known: ${{ steps.pruefung.outputs.role_known }}
       human_intervention: ${{ steps.pruefung.outputs.human_intervention }}
+      # Versuchsgrenze: transition_check.py schreibt attempts_ok, attempts_current
+      # und attempts_max nach GITHUB_OUTPUT. Sie werden hier durchgereicht, damit
+      # `agent` bei erreichter Grenze nicht startet und `nachbereitung` den Fall
+      # als solchen meldet -- und nicht als Agentenfehler, den es nie gab.
+      attempts_ok: ${{ steps.pruefung.outputs.attempts_ok }}
+      attempts_current: ${{ steps.pruefung.outputs.attempts_current }}
+      attempts_max: ${{ steps.pruefung.outputs.attempts_max }}
     steps:
       # Muster A: Nur den Kern auschecken. Dieser Job braucht scripts/ aus
       # factory-core, aber keinen Produktcode. persist-credentials: false
@@ -360,7 +373,10 @@ jobs:
   agent:
     name: Agenten-Lauf
     needs: pruefung
-    if: needs.pruefung.outputs.allowed == 'true' && needs.pruefung.outputs.role_known == 'true'
+    # attempts_ok gehoert ausdruecklich dazu: bei erreichter Versuchsgrenze
+    # bleibt `allowed` wahr (der Akteur war berechtigt), nur die Grenze griff.
+    # Ohne diese Bedingung hinge der Halt allein am Exit-Code von `pruefung`.
+    if: needs.pruefung.outputs.allowed == 'true' && needs.pruefung.outputs.role_known == 'true' && needs.pruefung.outputs.attempts_ok == 'true'
     # Rechte in der Kette koennen nur sinken. Dieser Block muss decken, was
     # run-agent.yml auf Workflow-Ebene verlangt; die anderen Jobs dieses
     # Ablaufs bleiben bei Lesen und Issues. Der Aufrufer im Produktrepositorium
@@ -390,6 +406,20 @@ jobs:
   # Kette lief einen Schritt und blieb stehen. Jetzt wird der Folgezustand
   # nachgeschlagen und als Ausgabe zurueckgegeben; gesetzt wird er vom
   # Aufrufer mit einer Identitaet, die Folgeereignisse ausloest.
+  #
+  # Drei Faelle, drei Kommentare:
+  #   attempts_ok == 'false'  -- Versuchsgrenze erreicht. Kein Agent lief.
+  #                              Kommentar factory:attempts-exhausted, Label
+  #                              flag:attempts-exhausted, Status
+  #                              attempts_exhausted.
+  #   Agent nicht erfolgreich -- Kommentar factory:result mit agent_error
+  #                              oder schema_invalid, wie bisher.
+  #   Agent erfolgreich       -- Folgezustand bestimmen, Kommentar
+  #                              factory:result status=success, wie bisher.
+  #
+  # Der erste Fall war bis PR #11 im zweiten versteckt: `needs.agent.outputs`
+  # ist bei uebersprungenem Agent leer, der Fallback 'agent_error' griff, und
+  # das Issue nannte einen Agentenfehler, den es nie gab.
   # ---------------------------------------------------------------------------
   nachbereitung:
     name: Ergebnis auswerten und Folgezustand bestimmen
@@ -400,7 +430,8 @@ jobs:
     env:
       GH_REPO: ${{ github.repository }}
     outputs:
-      status: ${{ steps.agent_ergebnis.outputs.status }}
+      # Genau einer der beiden Schritte laeuft; der andere liefert leer.
+      status: ${{ steps.versuchsgrenze.outputs.status || steps.agent_ergebnis.outputs.status }}
       next_label: ${{ steps.folge.outputs.next_label }}
     steps:
       # Muster A: Nur den Kern auschecken. Dieser Job liest scripts/ aus
@@ -416,8 +447,79 @@ jobs:
         with:
           python-version: '3.12'
 
+      # -----------------------------------------------------------------------
+      # Fall 1: Versuchsgrenze erreicht. Es lief kein Agent, also gibt es kein
+      # Agentenergebnis zu bewerten. Der Kommentar nennt Rolle, Stand der
+      # Zaehlung und die Grenze; das Label markiert das Issue fuer Menschen.
+      # Der Schritt endet mit Exit 1, damit der Lauf wie bei jedem anderen
+      # Halt rot bleibt -- nur der Grund stimmt jetzt.
+      # -----------------------------------------------------------------------
+      - name: Versuchsgrenze melden
+        id: versuchsgrenze
+        if: needs.pruefung.outputs.attempts_ok == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.transition_token }}
+          GATE_ISSUE: ${{ inputs.issue_number }}
+          GATE_NEW_LABEL: ${{ inputs.new_label }}
+          GATE_ROLE: ${{ needs.pruefung.outputs.role_name }}
+          GATE_ATTEMPTS_CURRENT: ${{ needs.pruefung.outputs.attempts_current }}
+          GATE_ATTEMPTS_MAX: ${{ needs.pruefung.outputs.attempts_max }}
+          GATE_RUN_ID: ${{ github.run_id }}
+        run: |
+          python3 - << 'PYEOF'
+          import os
+          import subprocess
+          import sys
+
+          issue = os.environ["GATE_ISSUE"]
+          label = os.environ["GATE_NEW_LABEL"]
+          rolle = os.environ["GATE_ROLE"]
+          aktuell = os.environ["GATE_ATTEMPTS_CURRENT"]
+          maximum = os.environ["GATE_ATTEMPTS_MAX"]
+          run_id = os.environ["GATE_RUN_ID"]
+          token = os.environ["GH_TOKEN"]
+
+          github_output = os.environ.get("GITHUB_OUTPUT", "")
+          if github_output:
+              with open(github_output, "a") as f:
+                  f.write("status=attempts_exhausted\n")
+
+          kommentar = (
+              f"<!-- factory:attempts-exhausted run={run_id} -->\n"
+              f"**Versuchsgrenze erreicht** (Run {run_id})\n\n"
+              f"Rolle `{rolle}` hat an diesem Issue {aktuell} von "
+              f"{maximum} Versuchen verbraucht (`max_attempts`). "
+              f"Es wurde kein weiterer Agentenlauf gestartet.\n\n"
+              f"Die Zaehlung sinkt nicht; ein erneutes Setzen von `{label}` "
+              f"loest keinen Lauf aus. Wer die Rolle hier noch einmal arbeiten "
+              f"lassen will, hebt `max_attempts` im Produktrepositorium an; "
+              f"sonst uebernimmt ein Mensch.\n"
+          )
+          subprocess.run(
+              ["gh", "issue", "comment", issue, "--body", kommentar],
+              check=False,
+              env={**os.environ, "GH_TOKEN": token},
+          )
+          subprocess.run(
+              ["gh", "issue", "edit", issue, "--add-label", "flag:attempts-exhausted"],
+              check=False,
+              env={**os.environ, "GH_TOKEN": token},
+          )
+          print(
+              f"Versuchsgrenze fuer Rolle '{rolle}' erreicht: "
+              f"{aktuell}/{maximum}. Kette haelt an."
+          )
+          sys.exit(1)
+          PYEOF
+
+      # -----------------------------------------------------------------------
+      # Fall 2 und 3: Ein Agent ist gelaufen (oder haette laufen sollen).
+      # Nicht erfolgreich -> agent_error / schema_invalid, Exit 1.
+      # Erfolgreich -> status=success, die Folgeschritte laufen.
+      # -----------------------------------------------------------------------
       - name: Ergebnis auswerten
         id: agent_ergebnis
+        if: needs.pruefung.outputs.attempts_ok == 'true'
         env:
           GH_TOKEN: ${{ secrets.transition_token }}
           GATE_ISSUE: ${{ inputs.issue_number }}

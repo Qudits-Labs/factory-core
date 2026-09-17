@@ -83,13 +83,24 @@ und hält den Übergang an; ein stilles 0 an dieser Stelle würde die Grenze
 genauso lautlos ausser Kraft setzen wie eine fest verdrahtete 0.
 
 **Bei Erreichen von `max_attempts`:** `transition_check.py` verweigert den
-Übergang, der Job `pruefung` endet mit Befund, es wird kein weiterer
-Attempt-Eintrag geschrieben und kein Agent gestartet. Die Grenze gilt für
-jeden Akteur, auch für Logins aus `human_gate_logins`: ein Mensch, der das
-Label erneut setzt, löst keinen weiteren Lauf aus. Die Zählung sinkt nie,
-weil die Kommentare bleiben. Wer die Rolle an diesem Issue noch einmal
-arbeiten lassen will, hebt `max_attempts` im Produktrepositorium an; sonst
-übernimmt ein Mensch die Arbeit.
+Übergang und gibt `attempts_ok=false` zurück, der Job `pruefung` endet mit
+Befund, es wird kein weiterer Attempt-Eintrag geschrieben und kein Agent
+gestartet. Die Grenze gilt für jeden Akteur, auch für Logins aus
+`human_gate_logins`: ein Mensch, der das Label erneut setzt, löst keinen
+weiteren Lauf aus. Die Zählung sinkt nie, weil die Kommentare bleiben. Wer
+die Rolle an diesem Issue noch einmal arbeiten lassen will, hebt
+`max_attempts` im Produktrepositorium an; sonst übernimmt ein Mensch die
+Arbeit.
+
+Der Fall wird im Issue als das gemeldet, was er ist, nicht als
+Agentenfehler. Der Job `nachbereitung` schreibt einen Kommentar mit der
+Markierung `<!-- factory:attempts-exhausted run=<id> -->`, der Rolle, Stand
+der Zählung und `max_attempts` nennt, und setzt das Label
+`flag:attempts-exhausted`. Die Ausgabe `agent_status` trägt dann den Wert
+`attempts_exhausted`. Die Markierung `factory:attempts-exhausted` zählt
+nicht als Versuch; gezählt werden ausschliesslich Kommentare mit
+`factory:attempt`. Das Zustandslabel selbst bleibt stehen; entfernt wird
+es nur bei unberechtigtem Akteur.
 
 ## Menschliche Gates
 
