@@ -179,6 +179,13 @@ jobs:
       role_name: ${{ steps.pruefung.outputs.role_name }}
       role_known: ${{ steps.pruefung.outputs.role_known }}
       human_intervention: ${{ steps.pruefung.outputs.human_intervention }}
+      # Versuchsgrenze: transition_check.py schreibt attempts_ok, attempts_current
+      # und attempts_max nach GITHUB_OUTPUT. Sie werden hier durchgereicht, damit
+      # `agent` bei erreichter Grenze nicht startet und `nachbereitung` den Fall
+      # als solchen meldet -- und nicht als Agentenfehler, den es nie gab.
+      attempts_ok: ${{ steps.pruefung.outputs.attempts_ok }}
+      attempts_current: ${{ steps.pruefung.outputs.attempts_current }}
+      attempts_max: ${{ steps.pruefung.outputs.attempts_max }}
     steps:
       # Muster A: Nur den Kern auschecken. Dieser Job braucht scripts/ aus
       # factory-core, aber keinen Produktcode. persist-credentials: false
@@ -360,7 +367,10 @@ jobs:
   agent:
     name: Agenten-Lauf
     needs: pruefung
-    if: needs.pruefung.outputs.allowed == 'true' && needs.pruefung.outputs.role_known == 'true'
+    # attempts_ok gehoert ausdruecklich dazu: bei erreichter Versuchsgrenze
+    # bleibt `allowed` wahr (der Akteur war berechtigt), nur die Grenze griff.
+    # Ohne diese Bedingung hinge der Halt allein am Exit-Code von `pruefung`.
+    if: needs.pruefung.outputs.allowed == 'true' && needs.pruefung.outputs.role_known == 'true' && needs.pruefung.outputs.attempts_ok == 'true'
     # Rechte in der Kette koennen nur sinken. Dieser Block muss decken, was
     # run-agent.yml auf Workflow-Ebene verlangt; die anderen Jobs dieses
     # Ablaufs bleiben bei Lesen und Issues. Der Aufrufer im Produktrepositorium
