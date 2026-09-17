@@ -61,6 +61,36 @@ und für jeden auszuführenden Befehl.
 Die Regel dahinter: **der Kern definiert die Bedeutung eines Werts, das
 Produktrepositorium setzt ihn.**
 
+## Versuchszählung
+
+`max_attempts` ist einer dieser Schwellwerte: das Produktrepositorium setzt
+ihn, der Kern definiert, was gezählt wird.
+
+**Quelle:** Vor jedem Agentenlauf schreibt `transition.yml` einen Kommentar
+mit der Markierung `<!-- factory:attempt run=<id> -->` und einer Tabelle mit
+Rolle, Akteur, Zeitstempel und Run-ID ins Issue. Diese Kommentare sind die
+einzige Quelle der Zählung; es gibt keinen zweiten Zähler in einem Label,
+einer Datei oder einem Cache. `scripts/count_attempts.py` liest sie über die
+Issue-API, bevor `transition_check.py` prüft.
+
+**Zählweise:** pro Rolle. Gezählt wird jeder Kommentar mit Markierung, dessen
+Zeile `| Rolle |` dieselbe Rolle nennt wie der anstehende Übergang. Läufe
+anderer Rollen am selben Issue zählen nicht: drei gescheiterte Läufe des
+Solution Architect verbrauchen nicht das Kontingent des Implementers.
+Kommentare ohne Markierung zählen nie, auch wenn sie eine Rollenzeile
+enthalten. Ein Kommentar mit Markierung, aber ohne Rollenzeile ist ein Befund
+und hält den Übergang an; ein stilles 0 an dieser Stelle würde die Grenze
+genauso lautlos ausser Kraft setzen wie eine fest verdrahtete 0.
+
+**Bei Erreichen von `max_attempts`:** `transition_check.py` verweigert den
+Übergang, der Job `pruefung` endet mit Befund, es wird kein weiterer
+Attempt-Eintrag geschrieben und kein Agent gestartet. Die Grenze gilt für
+jeden Akteur, auch für Logins aus `human_gate_logins`: ein Mensch, der das
+Label erneut setzt, löst keinen weiteren Lauf aus. Die Zählung sinkt nie,
+weil die Kommentare bleiben. Wer die Rolle an diesem Issue noch einmal
+arbeiten lassen will, hebt `max_attempts` im Produktrepositorium an; sonst
+übernimmt ein Mensch die Arbeit.
+
 ## Menschliche Gates
 
 Die Freigabe zum Bauen, der Merge in den Hauptzweig und die Freigabe zur

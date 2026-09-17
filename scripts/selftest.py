@@ -206,6 +206,31 @@ FAELLE = [
         0,
         "Standardtabelle: needs:shaping laesst den Solution Architect arbeiten",
     ),
+    # --- Versuchszaehlung aus factory:attempt-Kommentaren ---
+    (
+        "count_attempts.py",
+        SAUBER / "count-attempts-leer",
+        0,
+        "Issue ohne Kommentare -- 0 Versuche",
+    ),
+    (
+        "count_attempts.py",
+        SAUBER / "count-attempts-rolle",
+        0,
+        "drei Attempt-Eintraege, zwei davon fuer die gesuchte Rolle -- 2 Versuche",
+    ),
+    (
+        "count_attempts.py",
+        SAUBER / "count-attempts-ohne-markierung",
+        0,
+        "Kommentare ohne Markierung zaehlen nicht, auch nicht mit Rollenzeile -- 0 Versuche",
+    ),
+    (
+        "count_attempts.py",
+        VERSTOSS / "count-attempts",
+        1,
+        "Attempt-Eintrag mit Markierung, aber ohne Rollenzeile wird als Befund abgewiesen",
+    ),
     (
         "validate_result.py",
         SAUBER / "validate-result",
