@@ -780,6 +780,37 @@ def pruefe_validate_result() -> None:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# 14. gh-Aufrufe gegen das aufrufende Repositorium (check_gh_repo_kontext.py)
+#     Die Jobs eines wiederverwendbaren Ablaufs checken den Kern aus, nicht
+#     das Produkt. gh leitet das Repositorium ohne Angabe aus dem
+#     Arbeitsverzeichnis ab -- und suchte Issues deshalb im Kern. Beim ersten
+#     echten Durchlauf scheiterte `gh issue comment 18` mit «Could not resolve
+#     to an issue». Jeder gh-Aufruf braucht --repo oder GH_REPO in der env.
+#
+#     Schritt 2 (selftest) misst check_gh_repo_kontext.py an den Fixtures.
+#     Dieser Schritt misst dieselbe Pruefung am eigenen Bestand.
+# ─────────────────────────────────────────────────────────────────────────────
+def pruefe_gh_repo_kontext() -> None:
+    skript = SCRIPTS / "check_gh_repo_kontext.py"
+    if not skript.exists():
+        _uebersprungen_("gh-repo-kontext", f"{skript.name} fehlt")
+        return
+    if not WORKFLOWS.is_dir():
+        _uebersprungen_("gh-repo-kontext", ".github/workflows/ fehlt")
+        return
+
+    lauf = _lauf(skript, str(WORKFLOWS))
+    if lauf.returncode == 0:
+        _ok_(f"gh-repo-kontext — {lauf.stdout.strip().splitlines()[-1]}")
+    else:
+        _fehler_(
+            "gh-repo-kontext",
+            f"Exit {lauf.returncode} statt 0. "
+            + (lauf.stderr.strip()[:400] or lauf.stdout.strip()[:400]),
+        )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Hauptprogramm
 # ─────────────────────────────────────────────────────────────────────────────
 def main() -> int:
@@ -836,6 +867,10 @@ def main() -> int:
 
     print("Schritt 13: Ergebnis-Dokument-Validierung (validate_result.py)")
     pruefe_validate_result()
+    print()
+
+    print("Schritt 14: gh-Aufrufe gegen das aufrufende Repositorium (check_gh_repo_kontext.py)")
+    pruefe_gh_repo_kontext()
     print()
 
     gesamt = len(_ok) + len(_fehler) + len(_uebersprungen)

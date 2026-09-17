@@ -1,0 +1,67 @@
+name: Fixture -- gh-Aufrufe ohne Repositoriumskontext
+
+# Verstossfall fuer check_gh_repo_kontext.py. Stand von transition.yml vor
+# dem Fix: gh laeuft ohne --repo und ohne GH_REPO und leitet das Repositorium
+# aus dem Arbeitsverzeichnis ab -- dem Kern statt dem Produkt.
+
+on:
+  workflow_call:
+    inputs:
+      issue_number:
+        required: true
+        type: number
+
+permissions:
+  issues: write
+  contents: read
+
+jobs:
+  # Befund 1: Python-Listenliteral ohne --repo, keine GH_REPO-Umgebung
+  python_ohne:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Kommentar schreiben
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GATE_ISSUE: ${{ inputs.issue_number }}
+        run: |
+          python3 - << 'PYEOF'
+          import os
+          import subprocess
+          issue = os.environ["GATE_ISSUE"]
+          subprocess.run(
+              ["gh", "issue", "comment", issue, "--body", "hallo"],
+              check=True,
+              env={**os.environ, "GH_TOKEN": os.environ["GH_TOKEN"]},
+          )
+          PYEOF
+
+  # Befund 2: Shell-Aufruf ohne --repo, keine GH_REPO-Umgebung
+  shell_ohne:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Label setzen
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh issue edit 1 --add-label x
+
+  # Befund 3: GH_REPO auf Job-Ebene, aber subprocess bekommt eine eigene
+  # Umgebung ohne os.environ -- GH_REPO kommt bei gh nicht an
+  env_verworfen:
+    runs-on: ubuntu-latest
+    env:
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Kommentar schreiben
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python3 - << 'PYEOF'
+          import os
+          import subprocess
+          subprocess.run(
+              ["gh", "issue", "comment", "1", "--body", "hallo"],
+              check=True,
+              env={"GH_TOKEN": os.environ["GH_TOKEN"]},
+          )
+          PYEOF

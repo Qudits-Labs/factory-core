@@ -86,6 +86,24 @@ das Produktrepositorium. Jeder Job, der Dateien aus diesem Kern braucht, muss
 `ref: ${{ inputs.core_ref }}` aufrufen. Ohne diese Angabe checkt der Runner
 das Produkt aus, und `scripts/`, `role-frameworks/` sowie `schemas/` fehlen.
 
+## gh-Aufrufe
+
+Jeder `gh`-Aufruf im Kern läuft ausdrücklich gegen das aufrufende
+Repositorium. Das folgt aus dem Checkout-Muster oben: ein Job, der den Kern
+ausgecheckt hat, steht in einem Arbeitsverzeichnis, dessen Git-Remote auf
+`Qudits-Labs/factory-core` zeigt. Ohne weitere Angabe leitet `gh` das
+Repositorium genau daraus ab und sucht Issues, Labels und Pull Requests im
+Kern statt im Produkt. Beim ersten echten Durchlauf scheiterte
+`gh issue comment 18` so mit «Could not resolve to an issue»; das Issue lag
+im Produktrepositorium.
+
+Die Regel: der Job, der `gh` aufruft, setzt `GH_REPO: ${{ github.repository }}`
+in seiner `env:`. `github.repository` zeigt in einem wiederverwendbaren Ablauf
+auf das Produkt, und `gh` wertet `GH_REPO` bei jedem Aufruf aus. Wer die
+Umgebung an `subprocess` selbst zusammenstellt, übernimmt `os.environ`; sonst
+kommt die Variable nicht an. `--repo` je Aufruf ist die gleichwertige zweite
+Form. Der Canary misst beides (`scripts/check_gh_repo_kontext.py`).
+
 ## Auflösung der Schema-Verweise
 
 `result.schema.json` verweist auf `finding.schema.json` über einen relativen
