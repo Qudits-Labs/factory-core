@@ -194,7 +194,39 @@ jobs:
           python-version: '3.12'
 
       # -----------------------------------------------------------------------
+      # Schritt 0: Bisherige Versuche zaehlen
+      #
+      # Woher die Zahl kommt: Schritt 3 unten schreibt vor jedem Agentenlauf
+      # einen Kommentar mit `<!-- factory:attempt run=<id> -->` und einer
+      # Tabelle, deren Zeile `| Rolle |` die Rolle des Laufs nennt. Diese
+      # Kommentare sind die Quelle der Wahrheit fuer die Versuchszaehlung.
+      # count_attempts.py liest sie ueber die Issue-API und zaehlt pro Rolle:
+      # nur Eintraege, deren Rolle der des anstehenden Uebergangs entspricht.
+      # Die Rolle leitet das Skript selbst aus new_label und der Rollentabelle
+      # ab, weil `role_name` aus Schritt 1 hier noch nicht existiert.
+      #
+      # Bis zu diesem Schritt stand in Schritt 1 fest '0': die Grenze
+      # max_attempts griff nie, ein wiederholt scheiternder Agent lief endlos.
+      #
+      # Owner und Name des Produktrepositoriums stehen aus GITHUB_REPOSITORY
+      # ausdruecklich im API-Pfad -- unabhaengig von GH_REPO und vom
+      # Arbeitsverzeichnis, das hier der Kern ist.
+      # -----------------------------------------------------------------------
+      - name: Bisherige Versuche zaehlen
+        id: versuche
+        env:
+          GH_TOKEN: ${{ secrets.transition_token }}
+          GATE_ISSUE: ${{ inputs.issue_number }}
+          GATE_NEW_LABEL: ${{ inputs.new_label }}
+          GATE_ROLE_LABEL_MAP_JSON: ${{ inputs.role_label_map_json }}
+        run: python3 scripts/count_attempts.py
+
+      # -----------------------------------------------------------------------
       # Schritt 1: Akteur und Vorbedingungen pruefen
+      #
+      # GATE_CURRENT_ATTEMPTS kommt aus Schritt 0 (Anzahl der
+      # factory:attempt-Kommentare fuer diese Rolle). Erreicht sie
+      # max_attempts, verweigert transition_check.py den Uebergang.
       # -----------------------------------------------------------------------
       - name: Transition pruefen
         id: pruefung
@@ -205,7 +237,7 @@ jobs:
           GATE_NEW_LABEL: ${{ inputs.new_label }}
           GATE_MAX_ATTEMPTS: ${{ inputs.max_attempts }}
           GATE_ROLE_LABEL_MAP_JSON: ${{ inputs.role_label_map_json }}
-          GATE_CURRENT_ATTEMPTS: '0'
+          GATE_CURRENT_ATTEMPTS: ${{ steps.versuche.outputs.attempts }}
         run: python3 scripts/transition_check.py
 
       # -----------------------------------------------------------------------
